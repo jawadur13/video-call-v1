@@ -11,18 +11,19 @@ export default function RoomPage() {
   const [iceStatus, setIceStatus] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [camOff, setCamOff] = useState(false);
 
   const nameRef = useRef(name);
-  useEffect(() => {
-    nameRef.current = name;
-  }, [name]);
+  useEffect(() => { nameRef.current = name; }, [name]);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<Peer | null>(null);
   const currentUserStream = useRef<MediaStream | null>(null);
+  const activeCallRef = useRef<ReturnType<Peer["call"]> | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       peerRef.current?.destroy();
@@ -37,6 +38,9 @@ export default function RoomPage() {
   }, [joined]);
 
   const attachCallListeners = (call: ReturnType<Peer["call"]>) => {
+    activeCallRef.current = call;
+    setCallActive(true);
+
     call.peerConnection.oniceconnectionstatechange = () => {
       const state = call.peerConnection.iceConnectionState;
       setIceStatus(state);
@@ -53,14 +57,14 @@ export default function RoomPage() {
     call.on("error", (err) => console.error("Call error:", err));
     call.on("close", () => {
       setIceStatus("closed");
+      setCallActive(false);
+      setRemoteName("Friend");
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     });
   };
 
   const handleDataConnection = (conn: DataConnection) => {
-    conn.on("open", () => {
-      conn.send({ callerName: nameRef.current });
-    });
+    conn.on("open", () => { conn.send({ callerName: nameRef.current }); });
     conn.on("data", (data: unknown) => {
       if (data && typeof data === "object" && "callerName" in data) {
         setRemoteName((data as { callerName: string }).callerName || "Friend");
@@ -70,50 +74,26 @@ export default function RoomPage() {
   };
 
   const startCall = async () => {
-    if (!name.trim()) {
-      alert("Please enter your name first.");
-      return;
-    }
-
+    if (!name.trim()) return;
     setLoading(true);
-
     try {
-      // Step 1: Fetch real short-lived TURN credentials from our API route
       const credRes = await fetch("/api/turn-credentials");
       if (!credRes.ok) throw new Error("Could not fetch TURN credentials");
       const { iceServers } = await credRes.json();
-      console.log("Got ICE servers:", iceServers);
 
-      // Step 2: Get camera/mic
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
       });
       currentUserStream.current = stream;
 
-      // Step 3: Create peer with real credentials
       const peer = new Peer({
-        config: {
-          iceServers, // real credentials from Cloudflare
-          sdpSemantics: "unified-plan",
-        },
+        config: { iceServers, sdpSemantics: "unified-plan" },
       });
 
-      peer.on("open", (id) => {
-        setMyId(id);
-        setJoined(true);
-        setLoading(false);
-      });
-
-      peer.on("connection", (conn) => {
-        handleDataConnection(conn);
-      });
-
-      peer.on("call", (call) => {
-        call.answer(stream);
-        attachCallListeners(call);
-      });
-
+      peer.on("open", (id) => { setMyId(id); setJoined(true); setLoading(false); });
+      peer.on("connection", (conn) => { handleDataConnection(conn); });
+      peer.on("call", (call) => { call.answer(stream); attachCallListeners(call); });
       peer.on("error", (err) => {
         console.error("Peer error:", err);
         alert(`Connection error: ${err.message}`);
@@ -130,12 +110,36 @@ export default function RoomPage() {
 
   const callUser = (id: string) => {
     if (!peerRef.current || !currentUserStream.current || !id.trim()) return;
-
     const dataConn = peerRef.current.connect(id, { reliable: true });
     handleDataConnection(dataConn);
-
     const call = peerRef.current.call(id, currentUserStream.current);
     attachCallListeners(call);
+  };
+
+  const endCall = () => {
+    activeCallRef.current?.close();
+    activeCallRef.current = null;
+    setCallActive(false);
+    setIceStatus("");
+    setRemoteName("Friend");
+    setRemotePeerId("");
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+  };
+
+  const toggleMic = () => {
+    const audioTrack = currentUserStream.current?.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled;
+      setMicMuted(!audioTrack.enabled);
+    }
+  };
+
+  const toggleCam = () => {
+    const videoTrack = currentUserStream.current?.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled;
+      setCamOff(!videoTrack.enabled);
+    }
   };
 
   const copyId = () => {
@@ -145,123 +149,529 @@ export default function RoomPage() {
     });
   };
 
-  const iceColor =
-    iceStatus === "connected" || iceStatus === "completed"
-      ? "text-green-400"
-      : iceStatus === "failed" || iceStatus === "closed"
-      ? "text-red-400"
-      : iceStatus === "checking"
-      ? "text-yellow-400"
-      : "text-gray-500";
-
   const isConnected = iceStatus === "connected" || iceStatus === "completed";
 
+  const iceIndicatorColor =
+    isConnected ? "#22c55e"
+    : iceStatus === "failed" || iceStatus === "closed" ? "#ef4444"
+    : iceStatus === "checking" ? "#f59e0b"
+    : "#6b7280";
+
   return (
-    <main className="flex flex-col items-center p-6 bg-slate-900 min-h-screen text-white font-sans">
-      <h1 className="text-3xl font-bold mb-2 text-center">Friends&apos; Video Room</h1>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@700;800&display=swap');
 
-      {iceStatus && (
-        <p className={`text-xs mb-4 font-mono uppercase tracking-widest ${iceColor}`}>
-          ● ICE: {iceStatus}
-        </p>
-      )}
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
-      {!joined ? (
-        <div className="flex flex-col gap-4 bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center border border-slate-700 mt-6">
-          <p className="text-gray-400 text-sm">Enter your name to get started</p>
-          <input
-            className="p-3 rounded bg-slate-700 text-white border border-slate-600 outline-none focus:border-blue-500 transition-all"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !loading && startCall()}
-            disabled={loading}
-          />
-          <button
-            onClick={startCall}
-            disabled={!name.trim() || loading}
-            className="bg-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Connecting..." : "Enter Room"}
-          </button>
+        body {
+          background: #090c10;
+          font-family: 'DM Sans', sans-serif;
+          color: #e2e8f0;
+          min-height: 100vh;
+        }
+
+        .room-wrapper {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 32px 20px 48px;
+          background:
+            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56,189,248,0.07) 0%, transparent 70%),
+            radial-gradient(ellipse 60% 40% at 80% 100%, rgba(99,102,241,0.06) 0%, transparent 60%),
+            #090c10;
+        }
+
+        /* ── Header ── */
+        .header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 40px;
+        }
+        .header-title {
+          font-family: 'Syne', sans-serif;
+          font-size: clamp(26px, 5vw, 38px);
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          background: linear-gradient(135deg, #e0f2fe 0%, #7dd3fc 50%, #818cf8 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        .header-sub {
+          font-size: 13px;
+          color: #64748b;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          font-weight: 500;
+        }
+
+        /* ── ICE badge ── */
+        .ice-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 999px;
+          padding: 4px 12px;
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #94a3b8;
+          margin-bottom: 8px;
+        }
+        .ice-dot {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          transition: background 0.4s;
+        }
+
+        /* ── Join card ── */
+        .join-card {
+          width: 100%;
+          max-width: 420px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 24px;
+          padding: 40px 36px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          box-shadow: 0 32px 64px rgba(0,0,0,0.4);
+          backdrop-filter: blur(12px);
+        }
+        .join-label {
+          font-size: 13px;
+          color: #64748b;
+          text-align: center;
+          margin-bottom: 4px;
+        }
+        .join-input {
+          width: 100%;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 12px;
+          padding: 14px 18px;
+          color: #e2e8f0;
+          font-size: 15px;
+          font-family: 'DM Sans', sans-serif;
+          outline: none;
+          transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .join-input:focus {
+          border-color: rgba(125,211,252,0.4);
+          box-shadow: 0 0 0 3px rgba(125,211,252,0.08);
+        }
+        .join-input::placeholder { color: #475569; }
+        .btn-primary {
+          width: 100%;
+          padding: 14px;
+          border-radius: 12px;
+          border: none;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          background: linear-gradient(135deg, #38bdf8, #818cf8);
+          color: #fff;
+          letter-spacing: 0.02em;
+          transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+          box-shadow: 0 4px 24px rgba(56,189,248,0.2);
+        }
+        .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(56,189,248,0.3); }
+        .btn-primary:active:not(:disabled) { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ── Video grid ── */
+        .video-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          width: 100%;
+          max-width: 1100px;
+        }
+        @media (max-width: 700px) {
+          .video-grid { grid-template-columns: 1fr; }
+        }
+
+        .video-tile {
+          position: relative;
+          border-radius: 20px;
+          overflow: hidden;
+          background: #0f1419;
+          aspect-ratio: 16/9;
+          box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .video-tile.local {
+          border: 1.5px solid rgba(56,189,248,0.35);
+          box-shadow: 0 0 0 1px rgba(56,189,248,0.1), 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .video-tile.remote {
+          border: 1.5px solid rgba(255,255,255,0.07);
+        }
+        .video-tile video {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .cam-off-overlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0f1419;
+        }
+        .cam-off-avatar {
+          width: 72px; height: 72px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #1e3a5f, #312e81);
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 28px;
+          font-weight: 700;
+          color: #7dd3fc;
+          border: 2px solid rgba(125,211,252,0.2);
+        }
+        .name-tag {
+          position: absolute;
+          bottom: 14px; left: 14px;
+          background: rgba(9,12,16,0.75);
+          border: 1px solid rgba(255,255,255,0.1);
+          backdrop-filter: blur(8px);
+          padding: 5px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 500;
+          color: #cbd5e1;
+          display: flex; align-items: center; gap: 6px;
+          z-index: 10;
+        }
+        .name-tag-dot {
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: #22c55e;
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.85); }
+        }
+        .waiting-overlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          color: #334155;
+          font-size: 14px;
+        }
+        .waiting-icon {
+          width: 48px; height: 48px;
+          border-radius: 50%;
+          border: 2px solid #1e293b;
+          display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ── Controls bar ── */
+        .controls-bar {
+          width: 100%;
+          max-width: 1100px;
+          margin-top: 16px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 20px;
+          padding: 20px 28px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+          backdrop-filter: blur(12px);
+        }
+
+        /* ID section */
+        .id-section {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          flex: 1;
+          min-width: 200px;
+        }
+        .id-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          color: #475569;
+          font-weight: 500;
+        }
+        .id-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .id-value {
+          font-family: 'DM Mono', 'Fira Code', monospace;
+          font-size: 13px;
+          color: #7dd3fc;
+          background: rgba(125,211,252,0.06);
+          border: 1px solid rgba(125,211,252,0.15);
+          padding: 6px 12px;
+          border-radius: 8px;
+          user-select: all;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 260px;
+        }
+        .btn-copy {
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          padding: 6px 12px;
+          color: #94a3b8;
+          font-size: 12px;
+          font-family: 'DM Sans', sans-serif;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          white-space: nowrap;
+        }
+        .btn-copy:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+        .btn-copy.copied { color: #22c55e; border-color: rgba(34,197,94,0.3); }
+
+        /* Call input row */
+        .call-row {
+          display: flex;
+          gap: 8px;
+          flex: 2;
+          min-width: 280px;
+        }
+        .call-input {
+          flex: 1;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 10px;
+          padding: 10px 14px;
+          color: #e2e8f0;
+          font-size: 13px;
+          font-family: 'DM Sans', sans-serif;
+          outline: none;
+          transition: border-color 0.2s;
+          min-width: 0;
+        }
+        .call-input:focus { border-color: rgba(34,197,94,0.4); }
+        .call-input::placeholder { color: #334155; }
+
+        .btn-call {
+          padding: 10px 20px;
+          border-radius: 10px;
+          border: none;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          background: linear-gradient(135deg, #22c55e, #16a34a);
+          color: #fff;
+          transition: opacity 0.2s, transform 0.15s;
+          white-space: nowrap;
+        }
+        .btn-call:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+        .btn-call:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* ── In-call action buttons ── */
+        .action-buttons {
+          width: 100%;
+          max-width: 1100px;
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 8px;
+          flex-wrap: wrap;
+        }
+        .btn-action {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 11px 22px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.05);
+          color: #cbd5e1;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-action:hover { background: rgba(255,255,255,0.09); color: #fff; }
+        .btn-action.active {
+          background: rgba(239,68,68,0.12);
+          border-color: rgba(239,68,68,0.3);
+          color: #f87171;
+        }
+        .btn-end {
+          background: rgba(239,68,68,0.15);
+          border-color: rgba(239,68,68,0.35);
+          color: #f87171;
+          font-weight: 600;
+        }
+        .btn-end:hover { background: rgba(239,68,68,0.28) !important; color: #fca5a5 !important; }
+
+        .btn-icon { font-size: 16px; line-height: 1; }
+      `}</style>
+
+      <div className="room-wrapper">
+        {/* Header */}
+        <div className="header">
+          <h1 className="header-title">Video Room</h1>
+          <p className="header-sub">Private peer-to-peer calls</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl mt-4">
-          {/* Local Video */}
-          <div className="relative overflow-hidden rounded-2xl border-2 border-blue-500 shadow-2xl bg-black">
-            <p className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-xs z-10 border border-white/10">
-              {name} (You)
-            </p>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full aspect-video object-cover"
-            />
-          </div>
 
-          {/* Remote Video */}
-          <div className="relative overflow-hidden rounded-2xl border-2 border-slate-700 shadow-2xl bg-black">
-            <p className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-xs z-10 border border-white/10">
-              {remoteName}
-            </p>
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full aspect-video object-cover"
+        {/* ICE status badge */}
+        {iceStatus && (
+          <div className="ice-badge" style={{ marginBottom: 24 }}>
+            <span className="ice-dot" style={{ background: iceIndicatorColor }} />
+            {iceStatus}
+          </div>
+        )}
+
+        {!joined ? (
+          /* ── Join screen ── */
+          <div className="join-card">
+            <p className="join-label">Enter your name to get started</p>
+            <input
+              className="join-input"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !loading && startCall()}
+              disabled={loading}
+              autoFocus
             />
-            {!isConnected && (
-              <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm">
-                Waiting for friend...
+            <button
+              className="btn-primary"
+              onClick={startCall}
+              disabled={!name.trim() || loading}
+            >
+              {loading ? "Connecting…" : "Enter Room →"}
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* ── Video grid ── */}
+            <div className="video-grid">
+              {/* Local */}
+              <div className="video-tile local">
+                {camOff ? (
+                  <div className="cam-off-overlay">
+                    <div className="cam-off-avatar">
+                      {name.charAt(0).toUpperCase()}
+                    </div>
+                  </div>
+                ) : (
+                  <video ref={localVideoRef} autoPlay muted playsInline />
+                )}
+                <div className="name-tag">
+                  <span className="name-tag-dot" />
+                  {name || "You"}
+                </div>
+              </div>
+
+              {/* Remote */}
+              <div className="video-tile remote">
+                {!isConnected ? (
+                  <div className="waiting-overlay">
+                    <div className="waiting-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="1.5">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                      </svg>
+                    </div>
+                    <span>Waiting for friend…</span>
+                  </div>
+                ) : (
+                  <video ref={remoteVideoRef} autoPlay playsInline />
+                )}
+                {/* Keep remote video mounted but hidden when not connected */}
+                {isConnected && <video ref={remoteVideoRef} autoPlay playsInline style={{ display: isConnected ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover' }} />}
+                <div className="name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
+                  {remoteName}
+                </div>
+              </div>
+            </div>
+
+            {/* ── In-call action buttons (mic, cam, end) ── */}
+            {callActive && (
+              <div className="action-buttons">
+                <button
+                  className={`btn-action${micMuted ? " active" : ""}`}
+                  onClick={toggleMic}
+                >
+                  <span className="btn-icon">{micMuted ? "🔇" : "🎙️"}</span>
+                  {micMuted ? "Unmute" : "Mute"}
+                </button>
+                <button
+                  className={`btn-action${camOff ? " active" : ""}`}
+                  onClick={toggleCam}
+                >
+                  <span className="btn-icon">{camOff ? "📷" : "📹"}</span>
+                  {camOff ? "Start Video" : "Stop Video"}
+                </button>
+                <button className="btn-action btn-end" onClick={endCall}>
+                  <span className="btn-icon">📵</span>
+                  End Call
+                </button>
               </div>
             )}
-          </div>
 
-          {/* Controls */}
-          <div className="col-span-full mt-2 bg-slate-800 p-6 rounded-2xl flex flex-col items-center gap-4 border border-slate-700">
-            <div className="text-center">
-              <p className="text-gray-400 text-[10px] uppercase tracking-widest mb-1">
-                Your Personal ID — share this with your friend
-              </p>
-              <div className="flex items-center gap-2">
-                <p className="text-blue-400 font-mono font-bold select-all bg-slate-900 px-4 py-2 rounded-lg border border-slate-700">
-                  {myId || "Generating..."}
-                </p>
+            {/* ── Controls bar ── */}
+            <div className="controls-bar">
+              {/* Your ID */}
+              <div className="id-section">
+                <span className="id-label">Your ID — share with friend</span>
+                <div className="id-row">
+                  <span className="id-value">{myId || "Generating…"}</span>
+                  <button
+                    className={`btn-copy${copied ? " copied" : ""}`}
+                    onClick={copyId}
+                  >
+                    {copied ? "✓ Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Call row */}
+              <div className="call-row">
+                <input
+                  type="text"
+                  className="call-input"
+                  placeholder="Paste friend's ID to call…"
+                  value={remotePeerId}
+                  onChange={(e) => setRemotePeerId(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && callUser(remotePeerId)}
+                  disabled={callActive}
+                />
                 <button
-                  onClick={copyId}
-                  className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg border border-slate-600 transition-all"
+                  className="btn-call"
+                  onClick={() => callUser(remotePeerId)}
+                  disabled={!remotePeerId.trim() || callActive}
                 >
-                  {copied ? "✓ Copied" : "Copy"}
+                  {callActive ? "In Call" : "📞 Call"}
                 </button>
               </div>
             </div>
-
-            <div className="flex gap-2 w-full max-w-md">
-              <input
-                type="text"
-                placeholder="Paste Friend's ID here"
-                className="p-3 rounded-lg bg-slate-900 text-white border border-slate-700 flex-1 outline-none focus:border-green-500 transition-all text-sm"
-                value={remotePeerId}
-                onChange={(e) => setRemotePeerId(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && callUser(remotePeerId)}
-              />
-              <button
-                onClick={() => callUser(remotePeerId)}
-                disabled={!remotePeerId.trim()}
-                className="bg-green-600 px-6 py-3 rounded-lg font-bold hover:bg-green-700 active:scale-95 transition-all disabled:opacity-50"
-              >
-                Call
-              </button>
-            </div>
-
-            <p className="text-[10px] text-slate-500 text-center">
-              ⚠️ This app requires HTTPS to access your camera on remote devices.
-            </p>
-          </div>
-        </div>
-      )}
-    </main>
+          </>
+        )}
+      </div>
+    </>
   );
 }
