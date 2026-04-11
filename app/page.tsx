@@ -14,6 +14,7 @@ export default function RoomPage() {
   const [callActive, setCallActive] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
 
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
@@ -22,12 +23,14 @@ export default function RoomPage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<Peer | null>(null);
   const currentUserStream = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const activeCallRef = useRef<ReturnType<Peer["call"]> | null>(null);
 
   useEffect(() => {
     return () => {
       peerRef.current?.destroy();
       currentUserStream.current?.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -58,6 +61,7 @@ export default function RoomPage() {
     });
     call.on("error", (err) => console.error("Call error:", err));
     call.on("close", () => {
+      if (screenSharing) stopScreenShare();
       setIceStatus("closed");
       setCallActive(false);
       setRemoteName("Friend");
@@ -119,6 +123,7 @@ export default function RoomPage() {
   };
 
   const endCall = () => {
+    if (screenSharing) stopScreenShare();
     activeCallRef.current?.close();
     activeCallRef.current = null;
     setCallActive(false);
@@ -143,6 +148,52 @@ export default function RoomPage() {
       videoTrack.enabled = !videoTrack.enabled;
       setCamOff(!videoTrack.enabled);
     }
+  };
+
+  const replaceVideoTrack = (newTrack: MediaStreamTrack | null) => {
+    const call = activeCallRef.current;
+    if (!call) return;
+
+    const sender = call.peerConnection
+      .getSenders()
+      .find((peerSender) => peerSender.track?.kind === "video");
+
+    if (sender) {
+      sender.replaceTrack(newTrack).catch((err) => {
+        console.error("Replace video track failed:", err);
+      });
+    }
+  };
+
+  const startScreenShare = async () => {
+    if (!activeCallRef.current || screenSharing) return;
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) throw new Error("Screen sharing media missing");
+
+      screenStreamRef.current = screenStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = screenStream;
+      replaceVideoTrack(screenTrack);
+      setScreenSharing(true);
+
+      screenTrack.onended = () => stopScreenShare();
+    } catch (err) {
+      console.error("Screen share failed:", err);
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (!screenSharing && !screenStreamRef.current) return;
+
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+
+    const cameraTrack = currentUserStream.current?.getVideoTracks()[0] ?? null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = currentUserStream.current;
+    replaceVideoTrack(cameraTrack);
+    setScreenSharing(false);
   };
 
   const copyId = () => {
@@ -629,6 +680,13 @@ export default function RoomPage() {
                 >
                   <span className="btn-icon">{camOff ? "📷" : "📹"}</span>
                   {camOff ? "Start Video" : "Stop Video"}
+                </button>
+                <button
+                  className={`btn-action${screenSharing ? " muted" : ""}`}
+                  onClick={screenSharing ? stopScreenShare : startScreenShare}
+                >
+                  <span className="btn-icon">{screenSharing ? "🛑" : "📺"}</span>
+                  {screenSharing ? "Stop Sharing" : "Share Screen"}
                 </button>
                 <button className="btn-action btn-end" onClick={endCall}>
                   <span className="btn-icon">📵</span>
