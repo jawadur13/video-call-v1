@@ -17,11 +17,15 @@ export default function RoomPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       currentUserStream.current = stream;
+      
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        // Force play for Chrome/Mobile
+        localVideoRef.current.onloadedmetadata = () => {
+          localVideoRef.current?.play().catch(e => console.error("Local play error:", e));
+        };
       }
 
-      // Explicit STUN config for live connections
       const peer = new Peer({
         config: {
           iceServers: [
@@ -41,6 +45,9 @@ export default function RoomPage() {
         call.on('stream', (remoteStream) => {
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = remoteStream;
+            remoteVideoRef.current.onloadedmetadata = () => {
+              remoteVideoRef.current?.play().catch(e => console.error("Remote play error:", e));
+            };
           }
         });
       });
@@ -48,17 +55,19 @@ export default function RoomPage() {
       peerRef.current = peer;
     } catch (err) {
       console.error("Media Error:", err);
-      alert("Please ensure camera permissions are allowed!");
+      alert("Permission denied or camera in use by another app!");
     }
   };
 
   const callUser = (id: string) => {
     if (!peerRef.current || !currentUserStream.current || !id) return;
-
     const call = peerRef.current.call(id, currentUserStream.current);
     call.on('stream', (remoteStream) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.onloadedmetadata = () => {
+          remoteVideoRef.current?.play().catch(e => console.error("Remote play error:", e));
+        };
       }
     });
   };
@@ -68,17 +77,13 @@ export default function RoomPage() {
       <h1 className="text-3xl font-bold mb-8">Friends' Video Room</h1>
 
       {!joined ? (
-        <div className="flex flex-col gap-4 bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex flex-col gap-4 bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
           <input 
             className="p-3 rounded bg-slate-700 text-white border border-slate-600 outline-none focus:border-blue-500" 
             placeholder="Enter your name" 
-            value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <button 
-            onClick={startCall}
-            className="bg-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-all"
-          >
+          <button onClick={startCall} className="bg-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-all">
             Enter Room
           </button>
         </div>
@@ -95,29 +100,16 @@ export default function RoomPage() {
           </div>
 
           <div className="col-span-full mt-6 bg-slate-800 p-6 rounded-2xl flex flex-col items-center gap-4">
-            <div className="text-center w-full">
-              <p className="text-gray-400 text-xs mb-2">Your ID (Share this with your friend)</p>
-              <div className="flex gap-2 justify-center">
-                <code className="bg-slate-900 px-4 py-2 rounded border border-slate-700 text-blue-400 font-bold break-all text-sm">
-                  {myId}
-                </code>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md mt-4">
+            <p className="text-gray-400 text-xs">Your ID: <span className="text-blue-400 font-mono font-bold">{myId}</span></p>
+            <div className="flex gap-2 w-full max-w-md">
               <input 
                 type="text" 
                 placeholder="Paste Friend's ID" 
-                className="p-3 rounded-lg bg-slate-900 text-white border border-slate-700 flex-1 outline-none focus:border-green-500"
+                className="p-3 rounded-lg bg-slate-900 text-white border border-slate-700 flex-1 outline-none"
                 value={remotePeerId}
                 onChange={(e) => setRemotePeerId(e.target.value)} 
               />
-              <button 
-                onClick={() => callUser(remotePeerId)}
-                className="bg-green-600 px-6 py-3 rounded-lg font-bold hover:bg-green-700 transition-all"
-              >
-                Call
-              </button>
+              <button onClick={() => callUser(remotePeerId)} className="bg-green-600 px-6 py-3 rounded-lg font-bold">Call</button>
             </div>
           </div>
         </div>
