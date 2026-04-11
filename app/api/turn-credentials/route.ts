@@ -3,8 +3,8 @@
 
 import { NextResponse } from "next/server";
 
-const TURN_KEY_ID = "a656ea86cd43369da6da1eb8acedc367";
-const TURN_KEY_API_TOKEN = "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8";
+const TURN_KEY_ID = process.env.TURN_KEY_ID!;
+const TURN_KEY_API_TOKEN = process.env.TURN_KEY_API_TOKEN!;
 
 export async function GET() {
   try {
