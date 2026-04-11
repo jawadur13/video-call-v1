@@ -31,6 +31,7 @@ export default function RoomPage() {
     };
   }, []);
 
+  // Set local video srcObject once on join — never unmount the video element
   useEffect(() => {
     if (joined && localVideoRef.current && currentUserStream.current) {
       localVideoRef.current.srcObject = currentUserStream.current;
@@ -50,6 +51,7 @@ export default function RoomPage() {
       console.log("Connection state:", call.peerConnection.connectionState);
     };
     call.on("stream", (remoteStream) => {
+      // Directly set on the ref — the <video> element is always mounted
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
       }
@@ -134,6 +136,7 @@ export default function RoomPage() {
     }
   };
 
+  // FIX: Only toggle the track — never unmount the <video> element
   const toggleCam = () => {
     const videoTrack = currentUserStream.current?.getVideoTracks()[0];
     if (videoTrack) {
@@ -183,7 +186,6 @@ export default function RoomPage() {
             #090c10;
         }
 
-        /* ── Header ── */
         .header {
           display: flex;
           flex-direction: column;
@@ -209,7 +211,6 @@ export default function RoomPage() {
           font-weight: 500;
         }
 
-        /* ── ICE badge ── */
         .ice-badge {
           display: inline-flex;
           align-items: center;
@@ -223,7 +224,7 @@ export default function RoomPage() {
           letter-spacing: 0.08em;
           text-transform: uppercase;
           color: #94a3b8;
-          margin-bottom: 8px;
+          margin-bottom: 24px;
         }
         .ice-dot {
           width: 7px; height: 7px;
@@ -231,7 +232,6 @@ export default function RoomPage() {
           transition: background 0.4s;
         }
 
-        /* ── Join card ── */
         .join-card {
           width: 100%;
           max-width: 420px;
@@ -268,6 +268,7 @@ export default function RoomPage() {
           box-shadow: 0 0 0 3px rgba(125,211,252,0.08);
         }
         .join-input::placeholder { color: #475569; }
+
         .btn-primary {
           width: 100%;
           padding: 14px;
@@ -283,11 +284,10 @@ export default function RoomPage() {
           transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
           box-shadow: 0 4px 24px rgba(56,189,248,0.2);
         }
-        .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(56,189,248,0.3); }
+        .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
         .btn-primary:active:not(:disabled) { transform: translateY(0); }
         .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
-        /* ── Video grid ── */
         .video-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -314,11 +314,18 @@ export default function RoomPage() {
         .video-tile.remote {
           border: 1.5px solid rgba(255,255,255,0.07);
         }
+
+        /* FIX: video is always in the DOM, we just layer an overlay on top when cam is off */
         .video-tile video {
-          width: 100%; height: 100%;
+          width: 100%;
+          height: 100%;
           object-fit: cover;
           display: block;
+          position: absolute;
+          inset: 0;
         }
+
+        /* Overlay sits on top of video — video element stays mounted */
         .cam-off-overlay {
           position: absolute;
           inset: 0;
@@ -326,6 +333,7 @@ export default function RoomPage() {
           align-items: center;
           justify-content: center;
           background: #0f1419;
+          z-index: 2;
         }
         .cam-off-avatar {
           width: 72px; height: 72px;
@@ -338,6 +346,7 @@ export default function RoomPage() {
           color: #7dd3fc;
           border: 2px solid rgba(125,211,252,0.2);
         }
+
         .name-tag {
           position: absolute;
           bottom: 14px; left: 14px;
@@ -362,6 +371,7 @@ export default function RoomPage() {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(0.85); }
         }
+
         .waiting-overlay {
           position: absolute;
           inset: 0;
@@ -372,6 +382,8 @@ export default function RoomPage() {
           gap: 12px;
           color: #334155;
           font-size: 14px;
+          z-index: 2;
+          background: #0f1419;
         }
         .waiting-icon {
           width: 48px; height: 48px;
@@ -380,7 +392,6 @@ export default function RoomPage() {
           display: flex; align-items: center; justify-content: center;
         }
 
-        /* ── Controls bar ── */
         .controls-bar {
           width: 100%;
           max-width: 1100px;
@@ -396,7 +407,6 @@ export default function RoomPage() {
           backdrop-filter: blur(12px);
         }
 
-        /* ID section */
         .id-section {
           display: flex;
           flex-direction: column;
@@ -446,7 +456,6 @@ export default function RoomPage() {
         .btn-copy:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
         .btn-copy.copied { color: #22c55e; border-color: rgba(34,197,94,0.3); }
 
-        /* Call input row */
         .call-row {
           display: flex;
           gap: 8px;
@@ -468,6 +477,7 @@ export default function RoomPage() {
         }
         .call-input:focus { border-color: rgba(34,197,94,0.4); }
         .call-input::placeholder { color: #334155; }
+        .call-input:disabled { opacity: 0.4; cursor: not-allowed; }
 
         .btn-call {
           padding: 10px 20px;
@@ -485,7 +495,6 @@ export default function RoomPage() {
         .btn-call:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
         .btn-call:disabled { opacity: 0.35; cursor: not-allowed; }
 
-        /* ── In-call action buttons ── */
         .action-buttons {
           width: 100%;
           max-width: 1100px;
@@ -511,7 +520,7 @@ export default function RoomPage() {
           transition: all 0.2s;
         }
         .btn-action:hover { background: rgba(255,255,255,0.09); color: #fff; }
-        .btn-action.active {
+        .btn-action.muted {
           background: rgba(239,68,68,0.12);
           border-color: rgba(239,68,68,0.3);
           color: #f87171;
@@ -523,27 +532,23 @@ export default function RoomPage() {
           font-weight: 600;
         }
         .btn-end:hover { background: rgba(239,68,68,0.28) !important; color: #fca5a5 !important; }
-
         .btn-icon { font-size: 16px; line-height: 1; }
       `}</style>
 
       <div className="room-wrapper">
-        {/* Header */}
         <div className="header">
           <h1 className="header-title">Video Room</h1>
           <p className="header-sub">Private peer-to-peer calls</p>
         </div>
 
-        {/* ICE status badge */}
         {iceStatus && (
-          <div className="ice-badge" style={{ marginBottom: 24 }}>
+          <div className="ice-badge">
             <span className="ice-dot" style={{ background: iceIndicatorColor }} />
             {iceStatus}
           </div>
         )}
 
         {!joined ? (
-          /* ── Join screen ── */
           <div className="join-card">
             <p className="join-label">Enter your name to get started</p>
             <input
@@ -565,18 +570,18 @@ export default function RoomPage() {
           </div>
         ) : (
           <>
-            {/* ── Video grid ── */}
             <div className="video-grid">
-              {/* Local */}
+              {/* ── Local tile ── */}
               <div className="video-tile local">
-                {camOff ? (
+                {/* FIX: video is ALWAYS mounted, ref never breaks */}
+                <video ref={localVideoRef} autoPlay muted playsInline />
+                {/* Overlay sits on top when cam is off — video element untouched */}
+                {camOff && (
                   <div className="cam-off-overlay">
                     <div className="cam-off-avatar">
                       {name.charAt(0).toUpperCase()}
                     </div>
                   </div>
-                ) : (
-                  <video ref={localVideoRef} autoPlay muted playsInline />
                 )}
                 <div className="name-tag">
                   <span className="name-tag-dot" />
@@ -584,9 +589,12 @@ export default function RoomPage() {
                 </div>
               </div>
 
-              {/* Remote */}
+              {/* ── Remote tile ── */}
               <div className="video-tile remote">
-                {!isConnected ? (
+                {/* FIX: video is ALWAYS mounted — srcObject set directly on ref */}
+                <video ref={remoteVideoRef} autoPlay playsInline />
+                {/* Waiting overlay on top when not connected */}
+                {!isConnected && (
                   <div className="waiting-overlay">
                     <div className="waiting-icon">
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="1.5">
@@ -598,29 +606,25 @@ export default function RoomPage() {
                     </div>
                     <span>Waiting for friend…</span>
                   </div>
-                ) : (
-                  <video ref={remoteVideoRef} autoPlay playsInline />
                 )}
-                {/* Keep remote video mounted but hidden when not connected */}
-                {isConnected && <video ref={remoteVideoRef} autoPlay playsInline style={{ display: isConnected ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover' }} />}
                 <div className="name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
                   {remoteName}
                 </div>
               </div>
             </div>
 
-            {/* ── In-call action buttons (mic, cam, end) ── */}
+            {/* ── In-call action buttons ── */}
             {callActive && (
               <div className="action-buttons">
                 <button
-                  className={`btn-action${micMuted ? " active" : ""}`}
+                  className={`btn-action${micMuted ? " muted" : ""}`}
                   onClick={toggleMic}
                 >
                   <span className="btn-icon">{micMuted ? "🔇" : "🎙️"}</span>
                   {micMuted ? "Unmute" : "Mute"}
                 </button>
                 <button
-                  className={`btn-action${camOff ? " active" : ""}`}
+                  className={`btn-action${camOff ? " muted" : ""}`}
                   onClick={toggleCam}
                 >
                   <span className="btn-icon">{camOff ? "📷" : "📹"}</span>
@@ -635,7 +639,6 @@ export default function RoomPage() {
 
             {/* ── Controls bar ── */}
             <div className="controls-bar">
-              {/* Your ID */}
               <div className="id-section">
                 <span className="id-label">Your ID — share with friend</span>
                 <div className="id-row">
@@ -649,7 +652,6 @@ export default function RoomPage() {
                 </div>
               </div>
 
-              {/* Call row */}
               <div className="call-row">
                 <input
                   type="text"
