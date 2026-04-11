@@ -21,12 +21,16 @@ export default function RoomPage() {
         localVideoRef.current.srcObject = stream;
       }
 
-      const peer = new Peer();
-      
-      peer.on('open', (id) => {
-        setMyId(id);
-        setJoined(true);
-      });
+    const peer = new Peer();
+
+const peer = new Peer({
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ]
+  }
+});
 
       // Handle incoming calls from friends
       peer.on('call', (call) => {
