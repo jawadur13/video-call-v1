@@ -10,8 +10,8 @@ export default function RoomPage() {
   const [joined, setJoined] = useState(false);
   const [iceStatus, setIceStatus] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Always read latest name inside peer event handlers
   const nameRef = useRef(name);
   useEffect(() => {
     nameRef.current = name;
@@ -74,36 +74,27 @@ export default function RoomPage() {
       alert("Please enter your name first.");
       return;
     }
+
+    setLoading(true);
+
     try {
+      // Step 1: Fetch real short-lived TURN credentials from our API route
+      const credRes = await fetch("/api/turn-credentials");
+      if (!credRes.ok) throw new Error("Could not fetch TURN credentials");
+      const { iceServers } = await credRes.json();
+      console.log("Got ICE servers:", iceServers);
+
+      // Step 2: Get camera/mic
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
       });
       currentUserStream.current = stream;
 
+      // Step 3: Create peer with real credentials
       const peer = new Peer({
         config: {
-          iceServers: [
-            // STUN
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            // Cloudflare TURN — your credentials
-            {
-              urls: "turn:turn.cloudflare.com:3478?transport=udp",
-              username: "a656ea86cd43369da6da1eb8acedc367",
-              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
-            },
-            {
-              urls: "turn:turn.cloudflare.com:3478?transport=tcp",
-              username: "a656ea86cd43369da6da1eb8acedc367",
-              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
-            },
-            {
-              urls: "turns:turn.cloudflare.com:5349?transport=tcp",
-              username: "a656ea86cd43369da6da1eb8acedc367",
-              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
-            },
-          ],
+          iceServers, // real credentials from Cloudflare
           sdpSemantics: "unified-plan",
         },
       });
@@ -111,14 +102,13 @@ export default function RoomPage() {
       peer.on("open", (id) => {
         setMyId(id);
         setJoined(true);
+        setLoading(false);
       });
 
-      // Receive DataConnection for name exchange (answerer side)
       peer.on("connection", (conn) => {
         handleDataConnection(conn);
       });
 
-      // Handle incoming calls
       peer.on("call", (call) => {
         call.answer(stream);
         attachCallListeners(call);
@@ -127,25 +117,23 @@ export default function RoomPage() {
       peer.on("error", (err) => {
         console.error("Peer error:", err);
         alert(`Connection error: ${err.message}`);
+        setLoading(false);
       });
 
       peerRef.current = peer;
     } catch (err) {
-      console.error("Media Error:", err);
-      alert(
-        "Could not access camera. Please check permissions and ensure you are on HTTPS."
-      );
+      console.error("Setup error:", err);
+      alert("Setup failed. Check permissions and ensure you are on HTTPS.");
+      setLoading(false);
     }
   };
 
   const callUser = (id: string) => {
     if (!peerRef.current || !currentUserStream.current || !id.trim()) return;
 
-    // Open DataConnection first to exchange names
     const dataConn = peerRef.current.connect(id, { reliable: true });
     handleDataConnection(dataConn);
 
-    // Then make the video call
     const call = peerRef.current.call(id, currentUserStream.current);
     attachCallListeners(call);
   };
@@ -186,14 +174,15 @@ export default function RoomPage() {
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && startCall()}
+            onKeyDown={(e) => e.key === "Enter" && !loading && startCall()}
+            disabled={loading}
           />
           <button
             onClick={startCall}
-            className="bg-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50"
-            disabled={!name.trim()}
+            disabled={!name.trim() || loading}
+            className="bg-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Enter Room
+            {loading ? "Connecting..." : "Enter Room"}
           </button>
         </div>
       ) : (
