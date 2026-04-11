@@ -11,7 +11,7 @@ export default function RoomPage() {
   const [iceStatus, setIceStatus] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  // FIX #3: Use a ref for name to avoid stale closures inside peer event handlers
+  // Always read latest name inside peer event handlers
   const nameRef = useRef(name);
   useEffect(() => {
     nameRef.current = name;
@@ -22,7 +22,7 @@ export default function RoomPage() {
   const peerRef = useRef<Peer | null>(null);
   const currentUserStream = useRef<MediaStream | null>(null);
 
-  // FIX #4: Cleanup on unmount — stop tracks and destroy peer
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       peerRef.current?.destroy();
@@ -32,13 +32,10 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (joined && localVideoRef.current && currentUserStream.current) {
-      // FIX #5: Only set srcObject here; rely on the `autoPlay` attribute on the element.
-      // Do NOT call .play() manually to avoid the race condition.
       localVideoRef.current.srcObject = currentUserStream.current;
     }
   }, [joined]);
 
-  // FIX #2: Helper to wire up ICE state logging + remote name via DataConnection
   const attachCallListeners = (call: ReturnType<Peer["call"]>) => {
     call.peerConnection.oniceconnectionstatechange = () => {
       const state = call.peerConnection.iceConnectionState;
@@ -51,7 +48,6 @@ export default function RoomPage() {
     call.on("stream", (remoteStream) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-        // FIX #5: Don't call .play() manually — rely on autoPlay attribute
       }
     });
     call.on("error", (err) => console.error("Call error:", err));
@@ -61,10 +57,8 @@ export default function RoomPage() {
     });
   };
 
-  // FIX #1 + #2: Use a DataConnection to exchange names bidirectionally
   const handleDataConnection = (conn: DataConnection) => {
     conn.on("open", () => {
-      // Send our name to the remote peer
       conn.send({ callerName: nameRef.current });
     });
     conn.on("data", (data: unknown) => {
@@ -90,24 +84,24 @@ export default function RoomPage() {
       const peer = new Peer({
         config: {
           iceServers: [
-            // STUN servers
+            // STUN
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            // FIX: TURN servers for cross-device / cross-network calls
+            // Cloudflare TURN — your credentials
             {
-              urls: "turn:openrelay.metered.ca:80",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turn:turn.cloudflare.com:3478?transport=udp",
+              username: "a656ea86cd43369da6da1eb8acedc367",
+              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
             },
             {
-              urls: "turn:openrelay.metered.ca:443",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turn:turn.cloudflare.com:3478?transport=tcp",
+              username: "a656ea86cd43369da6da1eb8acedc367",
+              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
             },
             {
-              urls: "turn:openrelay.metered.ca:443?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turns:turn.cloudflare.com:5349?transport=tcp",
+              username: "a656ea86cd43369da6da1eb8acedc367",
+              credential: "0a7432730a502b21c4d68bb5196c4f73531f64a4a8cc11461f3df6df3158eef8",
             },
           ],
           sdpSemantics: "unified-plan",
@@ -119,14 +113,13 @@ export default function RoomPage() {
         setJoined(true);
       });
 
-      // FIX #1 + #2: Receive DataConnection for name exchange (answerer side)
+      // Receive DataConnection for name exchange (answerer side)
       peer.on("connection", (conn) => {
         handleDataConnection(conn);
       });
 
       // Handle incoming calls
       peer.on("call", (call) => {
-        // FIX #1: answer() does NOT support metadata — name is exchanged via DataConnection
         call.answer(stream);
         attachCallListeners(call);
       });
@@ -139,20 +132,20 @@ export default function RoomPage() {
       peerRef.current = peer;
     } catch (err) {
       console.error("Media Error:", err);
-      alert("Could not access camera. Please check permissions and ensure you are on HTTPS.");
+      alert(
+        "Could not access camera. Please check permissions and ensure you are on HTTPS."
+      );
     }
   };
 
   const callUser = (id: string) => {
     if (!peerRef.current || !currentUserStream.current || !id.trim()) return;
 
-    // FIX #1 + #2: Open a DataConnection first to exchange names
-    const dataConn = peerRef.current.connect(id, {
-      reliable: true,
-    });
+    // Open DataConnection first to exchange names
+    const dataConn = peerRef.current.connect(id, { reliable: true });
     handleDataConnection(dataConn);
 
-    // Then make the video call (no metadata needed for names anymore)
+    // Then make the video call
     const call = peerRef.current.call(id, currentUserStream.current);
     attachCallListeners(call);
   };
@@ -172,6 +165,8 @@ export default function RoomPage() {
       : iceStatus === "checking"
       ? "text-yellow-400"
       : "text-gray-500";
+
+  const isConnected = iceStatus === "connected" || iceStatus === "completed";
 
   return (
     <main className="flex flex-col items-center p-6 bg-slate-900 min-h-screen text-white font-sans">
@@ -208,7 +203,6 @@ export default function RoomPage() {
             <p className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-xs z-10 border border-white/10">
               {name} (You)
             </p>
-            {/* FIX #5: autoPlay only — no manual .play() call */}
             <video
               ref={localVideoRef}
               autoPlay
@@ -223,15 +217,13 @@ export default function RoomPage() {
             <p className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-xs z-10 border border-white/10">
               {remoteName}
             </p>
-            {/* FIX #5: autoPlay only — no manual .play() call */}
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
               className="w-full aspect-video object-cover"
             />
-            {/* Waiting indicator when no remote stream yet */}
-            {iceStatus !== "connected" && iceStatus !== "completed" && (
+            {!isConnected && (
               <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm">
                 Waiting for friend...
               </div>
