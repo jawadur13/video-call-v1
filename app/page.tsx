@@ -588,7 +588,7 @@ export default function RoomPage() {
 
       <div className="room-wrapper">
         <div className="header">
-          <h1 className="header-title">Video Room</h1>
+          <h1 className="header-title">KOLIN 📞</h1>
           <p className="header-sub">Private peer-to-peer calls</p>
         </div>
 
@@ -598,7 +598,7 @@ export default function RoomPage() {
             {iceStatus}
           </div>
         )}
-
+        
         {!joined ? (
           <div className="join-card">
             <p className="join-label">Enter your name to get started</p>
