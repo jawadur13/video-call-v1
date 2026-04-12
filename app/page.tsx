@@ -376,6 +376,10 @@ export default function RoomPage() {
           inset: 0;
         }
 
+        .video-tile.local video {
+          transform: scaleX(-1);
+        }
+
         /* Overlay sits on top of video — video element stays mounted */
         .cam-off-overlay {
           position: absolute;
