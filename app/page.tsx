@@ -621,16 +621,26 @@ export default function RoomPage() {
 
           .video-container {
             aspect-ratio: 9/16;
-            max-height: 72vh;
+            max-height: 65vh;
             border-radius: 16px;
+          }
+          /* Show full video frame without cropping — eliminates zoomed-in look */
+          .video-container video {
+            object-fit: contain;
+            background: #000;
           }
 
           .local-pip {
-            width: clamp(90px, 26vw, 130px);
+            width: clamp(80px, 24vw, 120px);
+            aspect-ratio: 9/16;
             bottom: 10px;
             right: 10px;
             border-radius: 10px;
             border-width: 1.5px;
+          }
+          .local-pip video {
+            object-fit: contain;
+            background: #000;
           }
           .local-pip .cam-off-avatar {
             width: 28px; height: 28px;
