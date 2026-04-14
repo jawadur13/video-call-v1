@@ -354,8 +354,9 @@ export default function RoomPage() {
         .video-container video {
           width: 100%;
           height: 100%;
-          object-fit: cover;
+          object-fit: contain;
           display: block;
+          background: #000;
         }
 
         .local-pip {
