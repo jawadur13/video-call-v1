@@ -15,6 +15,15 @@ export default function RoomPage() {
   const [micMuted, setMicMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
@@ -25,6 +34,7 @@ export default function RoomPage() {
   const currentUserStream = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const activeCallRef = useRef<ReturnType<Peer["call"]> | null>(null);
+  const dataConnRef = useRef<DataConnection | null>(null);
 
   useEffect(() => {
     return () => {
@@ -70,10 +80,18 @@ export default function RoomPage() {
   };
 
   const handleDataConnection = (conn: DataConnection) => {
+    dataConnRef.current = conn;
     conn.on("open", () => { conn.send({ callerName: nameRef.current }); });
     conn.on("data", (data: unknown) => {
-      if (data && typeof data === "object" && "callerName" in data) {
-        setRemoteName((data as { callerName: string }).callerName || "Friend");
+      if (data && typeof data === "object") {
+        const payload = data as Record<string, unknown>;
+        if ("callerName" in payload) {
+          setRemoteName((payload as { callerName: string }).callerName || "Friend");
+        }
+        if (payload.type === "chat" && typeof payload.text === "string" && typeof payload.time === "string") {
+          const chatMsg = { from: "them" as const, text: payload.text, time: payload.time };
+          setMessages((prev) => [...prev, chatMsg]);
+        }
       }
     });
     conn.on("error", (err) => console.error("DataConnection error:", err));
@@ -126,10 +144,15 @@ export default function RoomPage() {
     if (screenSharing) stopScreenShare();
     activeCallRef.current?.close();
     activeCallRef.current = null;
+    dataConnRef.current?.close();
+    dataConnRef.current = null;
     setCallActive(false);
     setIceStatus("");
     setRemoteName("Friend");
     setRemotePeerId("");
+    setMessages([]);
+    setChatOpen(false);
+    setChatInput("");
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   };
 
@@ -201,6 +224,14 @@ export default function RoomPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const sendMessage = () => {
+    if (!chatInput.trim() || !dataConnRef.current) return;
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    dataConnRef.current.send({ type: "chat", text: chatInput.trim(), time });
+    setMessages((prev) => [...prev, { from: "me", text: chatInput.trim(), time }]);
+    setChatInput("");
   };
 
   const isConnected = iceStatus === "connected" || iceStatus === "completed";
@@ -600,6 +631,158 @@ export default function RoomPage() {
         .btn-end:hover { background: rgba(239,68,68,0.28) !important; color: #fca5a5 !important; }
         .btn-icon { font-size: 16px; line-height: 1; }
 
+        /* ── Chat panel ── */
+        .chat-toggle {
+          position: relative;
+        }
+        .chat-badge {
+          position: absolute;
+          top: -4px; right: -4px;
+          width: 18px; height: 18px;
+          border-radius: 50%;
+          background: #ef4444;
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex; align-items: center; justify-content: center;
+          line-height: 1;
+        }
+
+        .chat-panel {
+          width: 100%;
+          max-width: 1100px;
+          max-height: 320px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 20px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          backdrop-filter: blur(12px);
+          animation: chatSlideIn 0.25s ease-out;
+        }
+        @keyframes chatSlideIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 20px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          flex-shrink: 0;
+        }
+        .chat-header-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #e2e8f0;
+          display: flex; align-items: center; gap: 6px;
+        }
+        .chat-close-btn {
+          background: none; border: none;
+          color: #64748b; font-size: 18px;
+          cursor: pointer; padding: 2px 6px;
+          border-radius: 6px;
+          transition: background 0.2s, color 0.2s;
+        }
+        .chat-close-btn:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+
+        .chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-height: 120px;
+          max-height: 200px;
+        }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-track { background: transparent; }
+        .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+        .chat-msg {
+          max-width: 75%;
+          padding: 8px 14px;
+          border-radius: 14px;
+          font-size: 13px;
+          line-height: 1.45;
+          word-break: break-word;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .chat-msg.me {
+          align-self: flex-end;
+          background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(129,140,248,0.2));
+          border: 1px solid rgba(125,211,252,0.15);
+          color: #e2e8f0;
+          border-bottom-right-radius: 4px;
+        }
+        .chat-msg.them {
+          align-self: flex-start;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.08);
+          color: #cbd5e1;
+          border-bottom-left-radius: 4px;
+        }
+        .chat-msg-time {
+          font-size: 10px;
+          color: #475569;
+          align-self: flex-end;
+        }
+
+        .chat-empty {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #334155;
+          font-size: 13px;
+          min-height: 120px;
+          max-height: 200px;
+        }
+
+        .chat-input-row {
+          display: flex;
+          gap: 8px;
+          padding: 12px 16px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          flex-shrink: 0;
+        }
+        .chat-input {
+          flex: 1;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 10px;
+          padding: 10px 14px;
+          color: #e2e8f0;
+          font-size: 13px;
+          font-family: 'DM Sans', sans-serif;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .chat-input:focus { border-color: rgba(125,211,252,0.4); }
+        .chat-input::placeholder { color: #334155; }
+
+        .chat-send-btn {
+          padding: 10px 18px;
+          border-radius: 10px;
+          border: none;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          background: linear-gradient(135deg, #38bdf8, #818cf8);
+          color: #fff;
+          transition: opacity 0.2s, transform 0.15s;
+          white-space: nowrap;
+        }
+        .chat-send-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+        .chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
         /* ── Mobile portrait layout ── */
         @media (max-width: 640px) {
           .room-wrapper {
@@ -676,6 +859,40 @@ export default function RoomPage() {
           }
           .btn-icon {
             font-size: 14px;
+          }
+
+          .chat-panel {
+            max-width: 100%;
+            max-height: 260px;
+            border-radius: 16px;
+          }
+          .chat-header {
+            padding: 10px 14px;
+          }
+          .chat-messages {
+            padding: 12px 14px;
+            min-height: 80px;
+            max-height: 140px;
+          }
+          .chat-msg {
+            max-width: 85%;
+            font-size: 12px;
+            padding: 7px 12px;
+          }
+          .chat-empty {
+            min-height: 80px;
+            max-height: 140px;
+          }
+          .chat-input-row {
+            padding: 10px 12px;
+          }
+          .chat-input {
+            padding: 8px 12px;
+            font-size: 12px;
+          }
+          .chat-send-btn {
+            padding: 8px 14px;
+            font-size: 12px;
           }
         }
       `}</style>
@@ -781,10 +998,52 @@ export default function RoomPage() {
                   <span className="btn-icon">{screenSharing ? "🛑" : "📺"}</span>
                   {screenSharing ? "Stop Sharing" : "Share Screen"}
                 </button>
+                <button
+                  className={`btn-action chat-toggle${chatOpen ? " muted" : ""}`}
+                  onClick={() => setChatOpen(!chatOpen)}
+                >
+                  <span className="btn-icon">💬</span>
+                  Chat
+                </button>
                 <button className="btn-action btn-end" onClick={endCall}>
                   <span className="btn-icon">📵</span>
                   End Call
                 </button>
+              </div>
+            )}
+
+            {/* ── Chat panel ── */}
+            {callActive && chatOpen && (
+              <div className="chat-panel">
+                <div className="chat-header">
+                  <span className="chat-header-title">💬 Chat with {remoteName}</span>
+                  <button className="chat-close-btn" onClick={() => setChatOpen(false)}>✕</button>
+                </div>
+                {messages.length > 0 ? (
+                  <div className="chat-messages">
+                    {messages.map((msg, i) => (
+                      <div key={i} className={`chat-msg ${msg.from}`}>
+                        <span>{msg.text}</span>
+                        <span className="chat-msg-time">{msg.time}</span>
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                ) : (
+                  <div className="chat-empty">No messages yet — say hi!</div>
+                )}
+                <div className="chat-input-row">
+                  <input
+                    className="chat-input"
+                    placeholder="Type a message…"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  />
+                  <button className="chat-send-btn" onClick={sendMessage} disabled={!chatInput.trim()}>
+                    Send
+                  </button>
+                </div>
               </div>
             )}
 
