@@ -1,65 +1,47 @@
 # Kolin — Private Peer-to-Peer Video Calls
 
-A real-time peer-to-peer video calling application built with **Next.js** and **PeerJS**, featuring direct WebRTC connections for private, end-to-end communication.
+A simple, private video calling app. No sign-ups, no accounts — just open the link and call.
 
 **Live at: [kolin.pro.bd](https://kolin.pro.bd)**
 
 ## Features
 
-- **Peer-to-Peer Video Calls** — Direct WebRTC connections with no central media server
-- **Screen Sharing** — Share your screen during an active call
-- **Audio & Video Controls** — Mute microphone, toggle camera on/off
-- **TURN/STUN Support** — Cloudflare TURN servers for reliable NAT traversal
-- **Private Rooms** — Each user gets a unique PeerJS ID to share with a friend
-- **Connection Status** — Real-time ICE connection state indicator
-- **Responsive Design** — Works on desktop and mobile
+- **Video & Audio Calls** — Crystal clear peer-to-peer calls with no server in between
+- **Screen Sharing** — Show your screen during a call
+- **In-Call Chat** — Send text messages while on a video call
+- **Mute & Camera Toggle** — Control your mic and camera anytime
+- **Call Duration Timer** — See how long your call has been active
+- **Message Notifications** — Incoming messages pop up on screen so you never miss one
+- **Private & Secure** — Calls go directly between users, no recordings, no data stored
+- **Works on Mobile & Desktop** — Optimized for both portrait and landscape
 
-## Tech Stack
+## How to Use
 
-- **Framework:** Next.js 16 (App Router)
-- **WebRTC Library:** PeerJS
-- **Styling:** Tailwind CSS v4
-- **TURN/STUN:** Cloudflare Calls TURN API
-- **Language:** TypeScript
-- **Runtime:** React 19
+### Starting a Call
 
-## Environment Variables
+1. Open [kolin.pro.bd](https://kolin.pro.bd)
+2. Enter your name and click **Enter Room**
+3. Copy your unique ID and share it with the person you want to call
+4. Paste their ID and click **Call**
 
-Create a `.env.local` file with your Cloudflare Calls TURN credentials:
+### During a Call
 
-```
-TURN_KEY_ID=your_turn_key_id
-TURN_KEY_API_TOKEN=your_api_token
-```
+- **Mute** — Turn your microphone on/off
+- **Stop Video** — Turn your camera on/off
+- **Share Screen** — Show your screen to the other person
+- **Chat** — Open the chat panel to send text messages
+- **End Call** — Hang up
 
-These can be obtained from your [Cloudflare Calls dashboard](https://developers.cloudflare.com/calls/).
+### Receiving a Call
 
-## Getting Started
+1. Open [kolin.pro.bd](https://kolin.pro.bd)
+2. Enter your name and click **Enter Room**
+3. Share your ID with the caller
+4. When they call you, the connection starts automatically
 
-Install dependencies:
+## Tips
 
-```bash
-npm install
-```
-
-Run the development server:
-
-```bash
-npm run dev
-```
-
-Build for production:
-
-```bash
-npm run build
-npm start
-```
-
-## How It Works
-
-1. Enter your name and click **Enter Room** to generate a unique PeerJS ID
-2. Share your ID with a friend
-3. Paste their ID and click **Call** to start the connection
-4. Use the in-call controls to mute, toggle video, share screen, or end the call
-
-All media streams flow directly between peers — no server relays video or audio (unless a TURN server is required for NAT traversal).
+- Share your ID through any messaging app (WhatsApp, Messenger, SMS, etc.)
+- Incoming chat messages appear as pop-up notifications on the video — tap to read
+- All messages disappear when the call ends — nothing is saved
+- For best quality, use a stable internet connection
