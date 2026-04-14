@@ -598,6 +598,75 @@ export default function RoomPage() {
         }
         .btn-end:hover { background: rgba(239,68,68,0.28) !important; color: #fca5a5 !important; }
         .btn-icon { font-size: 16px; line-height: 1; }
+
+        /* ── Mobile portrait layout ── */
+        @media (max-width: 640px) {
+          .room-wrapper {
+            padding: 16px 12px 32px;
+          }
+          .header {
+            margin-bottom: 16px;
+          }
+          .header-title {
+            font-size: 22px;
+          }
+          .header-sub {
+            font-size: 11px;
+          }
+          .ice-badge {
+            margin-bottom: 12px;
+            font-size: 10px;
+            padding: 3px 10px;
+          }
+
+          .video-container {
+            aspect-ratio: 9/16;
+            max-height: 72vh;
+            border-radius: 16px;
+          }
+
+          .local-pip {
+            width: clamp(90px, 26vw, 130px);
+            bottom: 10px;
+            right: 10px;
+            border-radius: 10px;
+            border-width: 1.5px;
+          }
+          .local-pip .cam-off-avatar {
+            width: 28px; height: 28px;
+            font-size: 12px;
+          }
+          .local-pip .name-tag {
+            font-size: 8px;
+            padding: 2px 5px;
+            bottom: 4px;
+            left: 4px;
+          }
+
+          .remote-name-tag {
+            bottom: 10px;
+            left: 10px;
+            font-size: 11px;
+            padding: 4px 10px;
+          }
+
+          .controls-bar {
+            border-radius: 16px;
+            padding: 14px 16px;
+            gap: 10px;
+          }
+          .action-buttons {
+            gap: 8px;
+          }
+          .btn-action {
+            padding: 9px 14px;
+            font-size: 12px;
+            border-radius: 10px;
+          }
+          .btn-icon {
+            font-size: 14px;
+          }
+        }
       `}</style>
 
       <div className="room-wrapper">
