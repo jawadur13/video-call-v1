@@ -18,8 +18,10 @@ export default function RoomPage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
+  const [toast, setToast] = useState<{ text: string; from: string } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,6 +43,7 @@ export default function RoomPage() {
       peerRef.current?.destroy();
       currentUserStream.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -91,6 +94,9 @@ export default function RoomPage() {
         if (payload.type === "chat" && typeof payload.text === "string" && typeof payload.time === "string") {
           const chatMsg = { from: "them" as const, text: payload.text, time: payload.time };
           setMessages((prev) => [...prev, chatMsg]);
+          setToast({ text: payload.text, from: remoteName });
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          toastTimerRef.current = setTimeout(() => setToast(null), 4000);
         }
       }
     });
@@ -153,6 +159,7 @@ export default function RoomPage() {
     setMessages([]);
     setChatOpen(false);
     setChatInput("");
+    setToast(null);
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   };
 
@@ -823,6 +830,47 @@ export default function RoomPage() {
         .chat-send-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
         .chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+        /* ── Chat toast (incoming message popup) ── */
+        .chat-toast {
+          position: absolute;
+          bottom: 16px;
+          left: 16px;
+          right: 16px;
+          right: calc(16px + clamp(140px, 22vw, 240px) + 16px);
+          background: rgba(9,12,16,0.9);
+          border: 1px solid rgba(255,255,255,0.12);
+          backdrop-filter: blur(16px);
+          border-radius: 14px;
+          padding: 12px 16px;
+          z-index: 30;
+          animation: toastSlideUp 0.3s ease-out;
+          cursor: pointer;
+          transition: opacity 0.2s;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .chat-toast:hover { background: rgba(15,20,28,0.95); }
+        @keyframes toastSlideUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-toast-sender {
+          font-size: 11px;
+          font-weight: 600;
+          color: #7dd3fc;
+          letter-spacing: 0.02em;
+        }
+        .chat-toast-text {
+          font-size: 13px;
+          color: #e2e8f0;
+          line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
         /* ── Mobile portrait layout ── */
         @media (max-width: 640px) {
           .room-wrapper {
@@ -940,6 +988,21 @@ export default function RoomPage() {
             padding: 8px 14px;
             font-size: 12px;
           }
+
+          .chat-toast {
+            left: 10px;
+            right: calc(10px + clamp(80px, 24vw, 120px) + 10px);
+            bottom: 10px;
+            padding: 10px 14px;
+            border-radius: 12px;
+          }
+          .chat-toast-sender {
+            font-size: 10px;
+          }
+          .chat-toast-text {
+            font-size: 12px;
+            -webkit-line-clamp: 2;
+          }
         }
       `}</style>
 
@@ -1009,6 +1072,14 @@ export default function RoomPage() {
                 <span className="name-tag-dot" />
                 {remoteName}
               </div>
+
+              {/* Incoming message toast */}
+              {toast && (
+                <div className="chat-toast" onClick={() => { setToast(null); if (!chatOpen) setChatOpen(true); }}>
+                  <span className="chat-toast-sender">{toast.from}</span>
+                  <span className="chat-toast-text">{toast.text}</span>
+                </div>
+              )}
 
               {/* ── Local (self) — picture-in-picture overlay ── */}
               <div className="local-pip">
