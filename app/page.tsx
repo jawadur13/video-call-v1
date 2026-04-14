@@ -94,7 +94,8 @@ export default function RoomPage() {
         if (payload.type === "chat" && typeof payload.text === "string" && typeof payload.time === "string") {
           const chatMsg = { from: "them" as const, text: payload.text, time: payload.time };
           setMessages((prev) => [...prev, chatMsg]);
-          setToast({ text: payload.text, from: remoteName });
+          const senderName = typeof payload.from === "string" ? payload.from : remoteName;
+          setToast({ text: payload.text, from: senderName });
           if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
           toastTimerRef.current = setTimeout(() => setToast(null), 4000);
         }
@@ -236,7 +237,7 @@ export default function RoomPage() {
   const sendMessage = () => {
     if (!chatInput.trim() || !dataConnRef.current) return;
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    dataConnRef.current.send({ type: "chat", text: chatInput.trim(), time });
+    dataConnRef.current.send({ type: "chat", text: chatInput.trim(), time, from: nameRef.current });
     setMessages((prev) => [...prev, { from: "me", text: chatInput.trim(), time }]);
     setChatInput("");
   };
