@@ -236,6 +236,24 @@ export default function RoomPage() {
 
   const isConnected = iceStatus === "connected" || iceStatus === "completed";
 
+  // ── Call duration timer ──
+  const [callDuration, setCallDuration] = useState(0);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setCallDuration(0);
+      return;
+    }
+    const interval = setInterval(() => setCallDuration((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isConnected]);
+
+  const formatDuration = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+    const s = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
   const iceIndicatorColor =
     isConnected ? "#22c55e"
     : iceStatus === "failed" || iceStatus === "closed" ? "#ef4444"
@@ -312,6 +330,28 @@ export default function RoomPage() {
           width: 7px; height: 7px;
           border-radius: 50%;
           transition: background 0.4s;
+        }
+
+        .call-timer {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(34,197,94,0.1);
+          border: 1px solid rgba(34,197,94,0.2);
+          border-radius: 999px;
+          padding: 4px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: 'DM Mono', 'Fira Code', monospace;
+          color: #4ade80;
+          letter-spacing: 0.04em;
+          margin-bottom: 24px;
+        }
+        .call-timer-dot {
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          background: #22c55e;
+          animation: pulse 2s infinite;
         }
 
         .join-card {
@@ -803,6 +843,12 @@ export default function RoomPage() {
             padding: 3px 10px;
           }
 
+          .call-timer {
+            margin-bottom: 12px;
+            font-size: 12px;
+            padding: 3px 12px;
+          }
+
           .video-container {
             aspect-ratio: 9/16;
             max-height: 65vh;
@@ -909,7 +955,14 @@ export default function RoomPage() {
             {iceStatus}
           </div>
         )}
-        
+
+        {isConnected && (
+          <div className="call-timer">
+            <span className="call-timer-dot" />
+            {formatDuration(callDuration)}
+          </div>
+        )}
+
         {!joined ? (
           <div className="join-card">
             <p className="join-label">Enter your name to get started</p>
