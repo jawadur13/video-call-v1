@@ -88,7 +88,7 @@ export default function RoomPage() {
       const { iceServers } = await credRes.json();
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true,
       });
       currentUserStream.current = stream;
