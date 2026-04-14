@@ -339,70 +339,79 @@ export default function RoomPage() {
         .btn-primary:active:not(:disabled) { transform: translateY(0); }
         .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
-        .video-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
+        .video-container {
+          position: relative;
           width: 100%;
           max-width: 1100px;
-        }
-        @media (max-width: 700px) {
-          .video-grid { grid-template-columns: 1fr; }
-        }
-
-        .video-tile {
-          position: relative;
+          aspect-ratio: 16/9;
           border-radius: 20px;
           overflow: hidden;
           background: #0f1419;
-          aspect-ratio: 16/9;
           box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-        }
-        .video-tile.local {
-          border: 1.5px solid rgba(56,189,248,0.35);
-          box-shadow: 0 0 0 1px rgba(56,189,248,0.1), 0 16px 48px rgba(0,0,0,0.5);
-        }
-        .video-tile.remote {
           border: 1.5px solid rgba(255,255,255,0.07);
         }
 
-        /* FIX: video is always in the DOM, we just layer an overlay on top when cam is off */
-        .video-tile video {
+        .video-container video {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
-          position: absolute;
-          inset: 0;
         }
 
-        .video-tile.local video {
+        .local-pip {
+          position: absolute;
+          bottom: 16px;
+          right: 16px;
+          width: clamp(140px, 22vw, 240px);
+          aspect-ratio: 16/9;
+          border-radius: 14px;
+          overflow: hidden;
+          border: 2px solid rgba(56,189,248,0.4);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(56,189,248,0.15);
+          background: #0f1419;
+          z-index: 20;
+          transition: transform 0.2s;
+          cursor: grab;
+        }
+        .local-pip:active { cursor: grabbing; }
+        .local-pip:hover { transform: scale(1.03); }
+
+        .local-pip video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
           transform: scaleX(-1);
         }
 
-        /* Overlay sits on top of video — video element stays mounted */
-        .cam-off-overlay {
+        .local-pip .cam-off-overlay {
           position: absolute;
           inset: 0;
           display: flex;
           align-items: center;
           justify-content: center;
           background: #0f1419;
-          z-index: 2;
         }
-        .cam-off-avatar {
-          width: 72px; height: 72px;
+        .local-pip .cam-off-avatar {
+          width: 40px; height: 40px;
           border-radius: 50%;
           background: linear-gradient(135deg, #1e3a5f, #312e81);
           display: flex; align-items: center; justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 28px;
+          font-size: 16px;
           font-weight: 700;
           color: #7dd3fc;
           border: 2px solid rgba(125,211,252,0.2);
         }
 
-        .name-tag {
+        .local-pip .name-tag {
+          bottom: 6px;
+          left: 6px;
+          font-size: 10px;
+          padding: 3px 8px;
+        }
+
+        .remote-name-tag {
           position: absolute;
           bottom: 14px; left: 14px;
           background: rgba(9,12,16,0.75);
@@ -416,12 +425,13 @@ export default function RoomPage() {
           display: flex; align-items: center; gap: 6px;
           z-index: 10;
         }
-        .name-tag-dot {
+        .remote-name-tag .name-tag-dot {
           width: 6px; height: 6px;
           border-radius: 50%;
           background: #22c55e;
           animation: pulse 2s infinite;
         }
+
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(0.85); }
@@ -625,12 +635,34 @@ export default function RoomPage() {
           </div>
         ) : (
           <>
-            <div className="video-grid">
-              {/* ── Local tile ── */}
-              <div className="video-tile local">
-                {/* FIX: video is ALWAYS mounted, ref never breaks */}
+            <div className="video-container">
+              {/* ── Remote (friend) — full-size background video ── */}
+              <video ref={remoteVideoRef} autoPlay playsInline />
+
+              {/* Waiting overlay when not connected */}
+              {!isConnected && (
+                <div className="waiting-overlay">
+                  <div className="waiting-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="1.5">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                  </div>
+                  <span>Waiting for friend…</span>
+                </div>
+              )}
+
+              {/* Remote name tag */}
+              <div className="remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
+                <span className="name-tag-dot" />
+                {remoteName}
+              </div>
+
+              {/* ── Local (self) — picture-in-picture overlay ── */}
+              <div className="local-pip">
                 <video ref={localVideoRef} autoPlay muted playsInline />
-                {/* Overlay sits on top when cam is off — video element untouched */}
                 {camOff && (
                   <div className="cam-off-overlay">
                     <div className="cam-off-avatar">
@@ -641,29 +673,6 @@ export default function RoomPage() {
                 <div className="name-tag">
                   <span className="name-tag-dot" />
                   {name || "You"}
-                </div>
-              </div>
-
-              {/* ── Remote tile ── */}
-              <div className="video-tile remote">
-                {/* FIX: video is ALWAYS mounted — srcObject set directly on ref */}
-                <video ref={remoteVideoRef} autoPlay playsInline />
-                {/* Waiting overlay on top when not connected */}
-                {!isConnected && (
-                  <div className="waiting-overlay">
-                    <div className="waiting-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="1.5">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                    </div>
-                    <span>Waiting for friend…</span>
-                  </div>
-                )}
-                <div className="name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
-                  {remoteName}
                 </div>
               </div>
             </div>
