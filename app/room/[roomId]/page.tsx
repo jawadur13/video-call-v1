@@ -223,7 +223,7 @@ export default function RoomPage() {
         config: { iceServers, sdpSemantics: "unified-plan" },
       };
 
-      // Configuration priority: custom env vars > localhost > PeerJS Cloud
+      // Configuration priority: custom env vars > PeerJS Cloud > PeerJS demo server
       if (customHost) {
         peerConfig.host = customHost;
         peerConfig.port = parseInt(customPort || '443');
@@ -240,11 +240,13 @@ export default function RoomPage() {
         peerConfig.key = peerKey;
         console.log("Using PeerJS Cloud with API key");
       } else {
-        // Try to use default PeerJS Cloud (may not work without key)
-        console.warn("⚠️ No PeerJS configuration found!");
-        console.warn("For production, set NEXT_PUBLIC_PEERJS_KEY env var");
-        console.warn("Or use custom server with NEXT_PUBLIC_PEERJS_HOST");
-        console.warn("See PEERJS_DEPLOY.md for setup instructions");
+        // Use PeerJS public cloud server (free, no key required)
+        // This uses PeerJS's shared public signaling server
+        peerConfig.host = '0.peerjs.com';
+        peerConfig.port = 443;
+        peerConfig.path = '/';
+        peerConfig.secure = true;
+        console.log("Using PeerJS public cloud server (0.peerjs.com)");
       }
 
       console.log("Peer config:", { 
