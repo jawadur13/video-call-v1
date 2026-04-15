@@ -275,13 +275,25 @@ export default function RoomPage() {
 
         // Join room
         try {
+          console.log("Joining room:", roomId, "with peerId:", id);
+          
           const joinRes = await fetch(`/api/rooms/${roomId}/join`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ peerId: id, name: name.trim() }),
           });
 
-          const joinData = await joinRes.json();
+          console.log("Join response status:", joinRes.status);
+          console.log("Join response headers:", Object.fromEntries(joinRes.headers));
+
+          let joinData;
+          try {
+            joinData = await joinRes.json();
+          } catch (parseErr) {
+            const text = await joinRes.clone().text();
+            console.error("Failed to parse response as JSON. Response text:", text.substring(0, 200));
+            throw new Error(`API returned invalid JSON (status ${joinRes.status}). Check browser console for details.`);
+          }
 
           if (joinRes.status === 409) {
             // Room is full
