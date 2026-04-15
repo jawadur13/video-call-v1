@@ -287,11 +287,13 @@ export default function RoomPage() {
           console.log("Join response headers:", Object.fromEntries(joinRes.headers));
 
           let joinData;
+          let responseText = "";
+          
           try {
-            joinData = await joinRes.json();
+            responseText = await joinRes.text();
+            joinData = JSON.parse(responseText);
           } catch (parseErr) {
-            const text = await joinRes.clone().text();
-            console.error("Failed to parse response as JSON. Response text:", text.substring(0, 200));
+            console.error("Failed to parse response as JSON. Response text:", responseText.substring(0, 200));
             throw new Error(`API returned invalid JSON (status ${joinRes.status}). Check browser console for details.`);
           }
 
