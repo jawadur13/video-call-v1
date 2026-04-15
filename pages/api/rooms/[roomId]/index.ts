@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { joinRoom, leaveRoom, getRoomPeers, isRoomFull } from '../../../../app/lib/rooms';
+import { getRoomPeers, isRoomFull, leaveRoom } from '../../../../app/lib/rooms';
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,31 +12,7 @@ export default async function handler(
   }
 
   try {
-    if (req.method === 'POST') {
-      // Join room
-      const { peerId, name } = req.body;
-
-      if (!peerId || !name) {
-        return res.status(400).json({ error: 'Missing peerId or name' });
-      }
-
-      // Check if room is full
-      if (isRoomFull(roomId)) {
-        return res.status(409).json({ error: 'Room is full', isFull: true });
-      }
-
-      // Join room and get other peer info
-      const otherPeer = joinRoom(roomId, peerId, name);
-
-      return res.status(200).json({
-        success: true,
-        roomId,
-        peerId,
-        otherPeer: otherPeer ? { peerId: otherPeer.peerId, name: otherPeer.name } : null,
-        allPeers: getRoomPeers(roomId),
-      });
-
-    } else if (req.method === 'DELETE') {
+    if (req.method === 'DELETE') {
       // Leave room
       const { peerId } = req.body;
 
@@ -51,7 +27,6 @@ export default async function handler(
         roomId,
         peerId,
       });
-
     } else if (req.method === 'GET') {
       // Get room info
       const peers = getRoomPeers(roomId);
@@ -63,7 +38,6 @@ export default async function handler(
         isFull,
         peers,
       });
-
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
     }
