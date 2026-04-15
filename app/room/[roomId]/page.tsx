@@ -5,7 +5,7 @@ import Peer, { DataConnection } from "peerjs";
 
 export default function RoomPage() {
   const params = useParams();
-  const roomId = typeof params.roomId === 'string' ? params.roomId : '';
+  const roomId = params?.roomId && typeof params.roomId === 'string' ? params.roomId : '';
 
   const [myId, setMyId] = useState("");
   const [name, setName] = useState("");
