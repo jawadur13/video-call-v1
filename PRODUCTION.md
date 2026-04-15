@@ -1,5 +1,33 @@
 # Production Deployment Guide
 
+## ⚠️ CRITICAL: PeerJS Signaling Server Required
+
+**The app will NOT work in production without a PeerJS signaling server.**
+
+### Current Issue
+You're seeing "Cannot connect to new Peer after disconnecting from server" because no PeerJS server is configured for production.
+
+### Quick Fix (5 minutes)
+
+**Deploy a free PeerJS server on Render.com:**
+
+1. See **PEERJS_DEPLOY.md** for step-by-step instructions
+2. Or follow this summary:
+   - Create GitHub repo with PeerJS server code
+   - Deploy to Render.com (free tier)
+   - Add environment variables to Vercel
+   - Redeploy
+
+**Environment variables to add in Vercel:**
+```
+NEXT_PUBLIC_PEERJS_HOST=your-peerjs-server.onrender.com
+NEXT_PUBLIC_PEERJS_PORT=443
+NEXT_PUBLIC_PEERJS_PATH=/peerjs
+NEXT_PUBLIC_PEERJS_SECURE=true
+```
+
+---
+
 ## Vercel Configuration
 
 The `vercel.json` is configured for Next.js 16:

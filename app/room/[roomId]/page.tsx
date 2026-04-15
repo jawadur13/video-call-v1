@@ -244,6 +244,7 @@ export default function RoomPage() {
         console.warn("⚠️ No PeerJS configuration found!");
         console.warn("For production, set NEXT_PUBLIC_PEERJS_KEY env var");
         console.warn("Or use custom server with NEXT_PUBLIC_PEERJS_HOST");
+        console.warn("See PEERJS_DEPLOY.md for setup instructions");
       }
 
       console.log("Peer config:", { 
@@ -348,11 +349,18 @@ export default function RoomPage() {
         }
         // Only show error if not already connected
         if (!joined) {
-          const errorMsg = err.type === "browser-incompatible"
-            ? "Your browser doesn't support WebRTC"
-            : err.type === "unavailable-id"
-            ? "Peer ID already in use, trying again..."
-            : err.message || "Connection error";
+          let errorMsg = "Connection error";
+          
+          if (err.type === "browser-incompatible") {
+            errorMsg = "Your browser doesn't support WebRTC. Try Chrome or Firefox.";
+          } else if (err.type === "unavailable-id") {
+            errorMsg = "Peer ID already in use, trying again...";
+          } else if (err.type === "server-error" || err.message?.includes("disconnecting from server")) {
+            errorMsg = "Cannot connect to signaling server. The server may be down or not configured. Check browser console (F12) for details. See PEERJS_DEPLOY.md for setup.";
+          } else {
+            errorMsg = err.message || "Connection error. Check browser console for details.";
+          }
+          
           alert(`Connection error: ${errorMsg}`);
         }
       });
