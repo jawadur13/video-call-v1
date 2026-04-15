@@ -1,5 +1,14 @@
 # Production Deployment Guide
 
+## Vercel Configuration
+
+The `vercel.json` is configured for Next.js 16:
+- Uses Vercel's default runtime for Next.js (no custom runtime needed)
+- Single region deployment (`fra1`) for consistent state
+- Optimized for serverless function execution
+
+**Important**: Do NOT add custom `functions.runtime` configuration. Next.js 16 on Vercel uses the framework's built-in runtime automatically.
+
 ## Critical: In-Memory Storage Limitation
 
 This app currently uses **in-memory storage** for room management, which means:
