@@ -21,7 +21,7 @@ export default function RoomPage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
-  const [toast, setToast] = useState<{ text: string; from: string } | null>(null);
+  const [_toast, setToast] = useState<{ text: string; from: string } | null>(null);
   const [roomFull, setRoomFull] = useState(false);
   const [waiting, setWaiting] = useState(false);
 
@@ -53,10 +53,10 @@ export default function RoomPage() {
   const setupAudioAnalysis = (stream: MediaStream, setVolume: (v: number) => void) => {
     try {
       if (typeof window === 'undefined') return () => {};
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return () => {};
-      
-      const audioContext = new AudioContext();
+      const AudioContextClass = window.AudioContext || (window as unknown as Record<string, typeof AudioContext>).webkitAudioContext;
+      if (!AudioContextClass) return () => {};
+
+      const audioContext = new AudioContextClass();
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.5;
@@ -150,7 +150,7 @@ export default function RoomPage() {
     });
   };
 
-  const handleDataConnection = (conn: DataConnection, remotePeerId: string) => {
+  const handleDataConnection = (conn: DataConnection, _remotePeerId: string) => {
     dataConnRef.current = conn;
     conn.on("open", () => { conn.send({ callerName: nameRef.current }); });
     conn.on("data", (data: unknown) => {
@@ -214,18 +214,21 @@ export default function RoomPage() {
       // For production, set NEXT_PUBLIC_PEERJS_KEY env var, or configure custom server
       const peerKey = process.env.NEXT_PUBLIC_PEERJS_KEY || undefined;
       const customHost = process.env.NEXT_PUBLIC_PEERJS_HOST;
+      const customPort = process.env.NEXT_PUBLIC_PEERJS_PORT;
+      const customPath = process.env.NEXT_PUBLIC_PEERJS_PATH;
+      const customSecure = process.env.NEXT_PUBLIC_PEERJS_SECURE;
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      
-      const peerConfig: any = {
+
+      const peerConfig: Record<string, unknown> = {
         config: { iceServers, sdpSemantics: "unified-plan" },
       };
 
       // Configuration priority: custom env vars > localhost > PeerJS Cloud
       if (customHost) {
         peerConfig.host = customHost;
-        peerConfig.port = parseInt(process.env.NEXT_PUBLIC_PEERJS_PORT || '443');
-        peerConfig.path = process.env.NEXT_PUBLIC_PEERJS_PATH || '/peerjs';
-        peerConfig.secure = process.env.NEXT_PUBLIC_PEERJS_SECURE !== 'false';
+        peerConfig.port = parseInt(customPort || '443');
+        peerConfig.path = customPath || '/peerjs';
+        peerConfig.secure = customSecure !== 'false';
         console.log("Using custom PeerJS server:", peerConfig.host);
       } else if (isLocalhost) {
         peerConfig.host = 'localhost';
@@ -292,7 +295,7 @@ export default function RoomPage() {
           try {
             responseText = await joinRes.text();
             joinData = JSON.parse(responseText);
-          } catch (parseErr) {
+          } catch {
             console.error("Failed to parse response as JSON. Response text:", responseText.substring(0, 200));
             throw new Error(`API returned invalid JSON (status ${joinRes.status}). Check browser console for details.`);
           }
@@ -338,12 +341,15 @@ export default function RoomPage() {
       });
       peer.on("error", (err) => {
         console.error("Peer error:", err);
-        setLoading(false);
-        setWaiting(false);
+        // Reset loading state if still waiting/loading
+        if (loading || waiting) {
+          setLoading(false);
+          setWaiting(false);
+        }
         // Only show error if not already connected
         if (!joined) {
-          const errorMsg = err.type === "browser-incompatible" 
-            ? "Your browser doesn't support WebRTC" 
+          const errorMsg = err.type === "browser-incompatible"
+            ? "Your browser doesn't support WebRTC"
             : err.type === "unavailable-id"
             ? "Peer ID already in use, trying again..."
             : err.message || "Connection error";
@@ -484,7 +490,7 @@ export default function RoomPage() {
 
   const isConnected = iceStatus === "connected" || iceStatus === "completed";
 
-  const [callDuration, setCallDuration] = useState(0);
+  const [_callDuration, setCallDuration] = useState(0);
 
   useEffect(() => {
     if (!isConnected) {
@@ -495,7 +501,7 @@ export default function RoomPage() {
     return () => clearInterval(interval);
   }, [isConnected]);
 
-  const formatDuration = (totalSeconds: number) => {
+  const _formatDuration = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
     const s = (totalSeconds % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
@@ -521,9 +527,12 @@ export default function RoomPage() {
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px", background: "#090c10", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}>
         <h1 style={{ fontSize: "24px" }}>Room Full</h1>
         <p style={{ color: "#94a3b8", marginBottom: "24px" }}>This room is currently full. Max 2 participants allowed.</p>
-        <a href="/" style={{ padding: "12px 24px", background: "linear-gradient(135deg, #38bdf8, #818cf8)", color: "#fff", borderRadius: "12px", border: "none", textDecoration: "none", cursor: "pointer" }}>
+        <button
+          onClick={() => typeof window !== 'undefined' && (window.location.href = '/')}
+          style={{ padding: "12px 24px", background: "linear-gradient(135deg, #38bdf8, #818cf8)", color: "#fff", borderRadius: "12px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}
+        >
           Create New Room
-        </a>
+        </button>
       </div>
     );
   }

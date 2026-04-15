@@ -12,8 +12,13 @@ export interface Room {
   peers: Map<string, RoomPeer>;
 }
 
-// In-memory room storage
+// In-memory room storage (for single-server deployments)
+// NOTE: This won't work across multiple serverless instances on Vercel
+// For production, consider using Redis, Supabase, or another shared state solution
 export const rooms = new Map<string, Room>();
+
+// Room cleanup timeout (15 minutes)
+const ROOM_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Create a new room
@@ -107,4 +112,22 @@ export function getRoomPeers(roomId: string): RoomPeer[] {
 export function isRoomFull(roomId: string): boolean {
   const room = rooms.get(roomId);
   return room ? room.peers.size >= 2 : false;
+}
+
+/**
+ * Clean up expired rooms (rooms older than TTL)
+ * Call this periodically to prevent memory leaks
+ */
+export function cleanupExpiredRooms(): void {
+  const now = Date.now();
+  for (const [roomId, room] of rooms.entries()) {
+    if (now - room.createdAt > ROOM_TTL_MS) {
+      rooms.delete(roomId);
+    }
+  }
+}
+
+// Cleanup expired rooms every 5 minutes
+if (typeof global !== 'undefined') {
+  setInterval(cleanupExpiredRooms, 5 * 60 * 1000);
 }

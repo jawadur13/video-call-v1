@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function HomePage() {
   const router = useRouter();
@@ -200,7 +200,7 @@ export default function HomePage() {
           <div className="card">
             <div className="card-title">✨ Start New Call</div>
             <p className="card-desc">
-              Create a new room and share the link with a friend. They'll join instantly.
+              Create a new room and share the link with a friend. They&apos;ll join instantly.
             </p>
             <button className="btn-primary" onClick={createRoom} disabled={loading}>
               {loading ? "Creating…" : "Create Room →"}
