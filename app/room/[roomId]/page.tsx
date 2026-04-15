@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import Peer, { DataConnection } from "peerjs";
 
-export default function RoomPage({ params }: { params: { roomId: string } }) {
-  const { roomId } = params;
+export default function RoomPage() {
+  const params = useParams();
+  const roomId = typeof params.roomId === 'string' ? params.roomId : '';
 
   const [myId, setMyId] = useState("");
   const [name, setName] = useState("");
@@ -49,7 +51,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   const setupAudioAnalysis = (stream: MediaStream, setVolume: (v: number) => void) => {
     try {
+      if (typeof window === 'undefined') return () => {};
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return () => {};
+      
       const audioContext = new AudioContext();
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
@@ -350,18 +355,20 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   };
 
   const copyRoomId = () => {
+    if (typeof window === 'undefined') return;
     navigator.clipboard.writeText(roomId).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(err => console.error("Failed to copy room ID:", err));
   };
 
   const copyRoomLink = () => {
+    if (typeof window === 'undefined') return;
     const link = `${window.location.origin}/room/${roomId}`;
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(err => console.error("Failed to copy link:", err));
   };
 
   const sendMessage = () => {
@@ -396,6 +403,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     : iceStatus === "failed" || iceStatus === "closed" ? "#ef4444"
     : iceStatus === "checking" ? "#f59e0b"
     : "#6b7280";
+
+  if (!roomId) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px", background: "#090c10", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}>
+        <h1 style={{ fontSize: "24px" }}>Loading...</h1>
+        <p style={{ color: "#94a3b8", marginBottom: "24px" }}>Setting up your room...</p>
+      </div>
+    );
+  }
 
   if (roomFull) {
     return (

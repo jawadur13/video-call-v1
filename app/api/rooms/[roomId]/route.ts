@@ -4,9 +4,9 @@ import { joinRoom, leaveRoom, getRoomPeers, isRoomFull } from "@/app/lib/rooms";
 // POST /api/rooms/[roomId]/join - Join a room
 export async function POST(
   req: NextRequest,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const { roomId } = params;
+  const { roomId } = await params;
   const { peerId, name } = await req.json();
 
   if (!roomId || !peerId || !name) {
@@ -39,9 +39,9 @@ export async function POST(
 // DELETE /api/rooms/[roomId]/leave - Leave a room
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const { roomId } = params;
+  const { roomId } = await params;
   const { peerId } = await req.json();
 
   if (!roomId || !peerId) {
@@ -63,9 +63,9 @@ export async function DELETE(
 // GET /api/rooms/[roomId] - Get room info
 export async function GET(
   req: NextRequest,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const { roomId } = params;
+  const { roomId } = await params;
 
   if (!roomId) {
     return NextResponse.json({ error: "Room ID required" }, { status: 400 });
