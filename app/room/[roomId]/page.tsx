@@ -48,6 +48,7 @@ export default function RoomPage() {
   const localAudioCleanupRef = useRef<(() => void) | null>(null);
   const remoteAudioCleanupRef = useRef<(() => void) | null>(null);
   const remotePeerIdRef = useRef<string | null>(null);
+  const peerOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setupAudioAnalysis = (stream: MediaStream, setVolume: (v: number) => void) => {
     try {
@@ -92,8 +93,8 @@ export default function RoomPage() {
 
   useEffect(() => {
     return () => {
-      if (peerRef.current?.openTimeout) {
-        clearTimeout(peerRef.current.openTimeout);
+      if (peerOpenTimeoutRef.current) {
+        clearTimeout(peerOpenTimeoutRef.current);
       }
       peerRef.current?.destroy();
       currentUserStream.current?.getTracks().forEach((t) => t.stop());
@@ -210,16 +211,55 @@ export default function RoomPage() {
       localAudioCleanupRef.current = setupAudioAnalysis(stream, setLocalVolume);
 
       // Create peer with optional TURN credentials
-      const peer = new Peer({
+      // For production, set NEXT_PUBLIC_PEERJS_KEY env var, or configure custom server
+      const peerKey = process.env.NEXT_PUBLIC_PEERJS_KEY || undefined;
+      const customHost = process.env.NEXT_PUBLIC_PEERJS_HOST;
+      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      
+      const peerConfig: any = {
         config: { iceServers, sdpSemantics: "unified-plan" },
+      };
+
+      // Configuration priority: custom env vars > localhost > PeerJS Cloud
+      if (customHost) {
+        peerConfig.host = customHost;
+        peerConfig.port = parseInt(process.env.NEXT_PUBLIC_PEERJS_PORT || '443');
+        peerConfig.path = process.env.NEXT_PUBLIC_PEERJS_PATH || '/peerjs';
+        peerConfig.secure = process.env.NEXT_PUBLIC_PEERJS_SECURE !== 'false';
+        console.log("Using custom PeerJS server:", peerConfig.host);
+      } else if (isLocalhost) {
+        peerConfig.host = 'localhost';
+        peerConfig.port = 9000;
+        peerConfig.path = '/peerjs';
+        peerConfig.secure = false;
+        console.log("Using local PeerJS server on port 9000");
+      } else if (peerKey) {
+        peerConfig.key = peerKey;
+        console.log("Using PeerJS Cloud with API key");
+      } else {
+        // Try to use default PeerJS Cloud (may not work without key)
+        console.warn("⚠️ No PeerJS configuration found!");
+        console.warn("For production, set NEXT_PUBLIC_PEERJS_KEY env var");
+        console.warn("Or use custom server with NEXT_PUBLIC_PEERJS_HOST");
+      }
+
+      console.log("Peer config:", { 
+        host: peerConfig.host || 'cloud.peerjs.com',
+        port: peerConfig.port, 
+        path: peerConfig.path,
+        secure: peerConfig.secure,
+        hasKey: !!peerKey
       });
+      
+      const peer = new Peer(peerConfig);
 
       peer.on("open", async (id) => {
         setMyId(id);
         
         // Clear the open timeout since we connected successfully
-        if (peerRef.current?.openTimeout) {
-          clearTimeout(peerRef.current.openTimeout);
+        if (peerOpenTimeoutRef.current) {
+          clearTimeout(peerOpenTimeoutRef.current);
+          peerOpenTimeoutRef.current = null;
         }
 
         // Validate roomId before making API call
@@ -298,7 +338,7 @@ export default function RoomPage() {
       });
 
       // Add timeout for peer open event
-      const openTimeout = setTimeout(() => {
+      peerOpenTimeoutRef.current = setTimeout(() => {
         if (!joined) {
           console.error("Peer open timeout");
           alert("Connection timeout. Please check your internet and try again.");
@@ -309,9 +349,7 @@ export default function RoomPage() {
         }
       }, 15000); // 15 second timeout
 
-      // Store timeout to clean up later
       peerRef.current = peer;
-      peerRef.current.openTimeout = openTimeout as any;
     } catch (err) {
       console.error("Setup error:", err);
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
