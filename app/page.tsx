@@ -513,6 +513,7 @@ export default function RoomPage() {
           box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(56,189,248,0.15);
           background: #0f1419;
           z-index: 20;
+          transition: transform 0.2s;
           transition: transform 0.2s, box-shadow 0.3s ease, border-color 0.3s ease;
           cursor: grab;
         }
@@ -552,17 +553,30 @@ export default function RoomPage() {
           border: 2px solid rgba(125,211,252,0.2);
         }
 
+        .local-pip .name-tag {
+          bottom: 6px;
+          left: 6px;
+          font-size: 10px;
+          padding: 3px 8px;
+        }
+
+        .remote-name-tag {
         .name-tag {
           position: absolute;
+          bottom: 14px; left: 14px;
           background: rgba(9,12,16,0.75);
           border: 1px solid rgba(255,255,255,0.1);
           backdrop-filter: blur(8px);
+          padding: 5px 12px;
           border-radius: 999px;
+          font-size: 12px;
           display: flex; align-items: center; gap: 6px;
           font-weight: 500;
           color: #cbd5e1;
+          display: flex; align-items: center; gap: 6px;
           z-index: 10;
         }
+        .remote-name-tag .name-tag-dot {
         .remote-name-tag {
           bottom: 14px; left: 14px;
           padding: 5px 12px;
@@ -576,6 +590,8 @@ export default function RoomPage() {
         .name-tag-dot {
           width: 6px; height: 6px;
           border-radius: 50%;
+          background: #22c55e;
+          animation: pulse 2s infinite;
           transition: transform 0.1s ease-out, background-color 0.2s;
         }
 
@@ -1116,6 +1132,7 @@ export default function RoomPage() {
           </div>
         ) : (
           <>
+            <div className="video-container">
             <div className={`video-container ${remoteVolume > 0.05 ? "speaker-active" : ""}`}>
               {/* ── Remote (friend) — full-size background video ── */}
               <video ref={remoteVideoRef} autoPlay playsInline />
@@ -1136,6 +1153,8 @@ export default function RoomPage() {
               )}
 
               {/* Remote name tag */}
+              <div className="remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
+                <span className="name-tag-dot" />
               <div className="name-tag remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
                 <span 
                   className="name-tag-dot" 
@@ -1156,6 +1175,7 @@ export default function RoomPage() {
               )}
 
               {/* ── Local (self) — picture-in-picture overlay ── */}
+              <div className="local-pip">
               <div className={`local-pip ${localVolume > 0.05 && !micMuted ? "speaker-active" : ""}`}>
                 <video ref={localVideoRef} autoPlay muted playsInline />
                 {camOff && (
@@ -1165,6 +1185,8 @@ export default function RoomPage() {
                     </div>
                   </div>
                 )}
+                <div className="name-tag">
+                  <span className="name-tag-dot" />
                 <div className="name-tag local-name-tag">
                   <span 
                     className="name-tag-dot" 
