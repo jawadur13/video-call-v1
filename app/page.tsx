@@ -19,6 +19,9 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
   const [toast, setToast] = useState<{ text: string; from: string } | null>(null);
+  
+  const [localVolume, setLocalVolume] = useState(0);
+  const [remoteVolume, setRemoteVolume] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,6 +40,46 @@ export default function RoomPage() {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const activeCallRef = useRef<ReturnType<Peer["call"]> | null>(null);
   const dataConnRef = useRef<DataConnection | null>(null);
+  const localAudioCleanupRef = useRef<(() => void) | null>(null);
+  const remoteAudioCleanupRef = useRef<(() => void) | null>(null);
+
+  const setupAudioAnalysis = (stream: MediaStream, setVolume: (v: number) => void) => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.5;
+
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let animationFrameId: number;
+
+      const updateVolume = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        setVolume(Math.min(average / 40, 1));
+        animationFrameId = requestAnimationFrame(updateVolume);
+      };
+
+      updateVolume();
+
+      return () => {
+        cancelAnimationFrame(animationFrameId);
+        source.disconnect();
+        audioContext.close().catch(console.error);
+      };
+    } catch (e) {
+      console.error("Audio analysis setup failed:", e);
+      return () => {};
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -44,6 +87,8 @@ export default function RoomPage() {
       currentUserStream.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (localAudioCleanupRef.current) localAudioCleanupRef.current();
+      if (remoteAudioCleanupRef.current) remoteAudioCleanupRef.current();
     };
   }, []);
 
@@ -71,6 +116,9 @@ export default function RoomPage() {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
       }
+      
+      if (remoteAudioCleanupRef.current) remoteAudioCleanupRef.current();
+      remoteAudioCleanupRef.current = setupAudioAnalysis(remoteStream, setRemoteVolume);
     });
     call.on("error", (err) => console.error("Call error:", err));
     call.on("close", () => {
@@ -117,6 +165,9 @@ export default function RoomPage() {
         audio: true,
       });
       currentUserStream.current = stream;
+      
+      if (localAudioCleanupRef.current) localAudioCleanupRef.current();
+      localAudioCleanupRef.current = setupAudioAnalysis(stream, setLocalVolume);
 
       const peer = new Peer({
         config: { iceServers, sdpSemantics: "unified-plan" },
@@ -162,6 +213,12 @@ export default function RoomPage() {
     setChatInput("");
     setToast(null);
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    
+    if (remoteAudioCleanupRef.current) {
+      remoteAudioCleanupRef.current();
+      remoteAudioCleanupRef.current = null;
+    }
+    setRemoteVolume(0);
   };
 
   const toggleMic = () => {
@@ -428,6 +485,12 @@ export default function RoomPage() {
           background: #0f1419;
           box-shadow: 0 16px 48px rgba(0,0,0,0.5);
           border: 1.5px solid rgba(255,255,255,0.07);
+          transition: box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+
+        .video-container.speaker-active {
+          border-color: rgba(34,197,94,0.6);
+          box-shadow: 0 0 0 3px rgba(34,197,94,0.3), 0 16px 48px rgba(0,0,0,0.5);
         }
 
         .video-container video {
@@ -450,8 +513,13 @@ export default function RoomPage() {
           box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(56,189,248,0.15);
           background: #0f1419;
           z-index: 20;
-          transition: transform 0.2s;
+          transition: transform 0.2s, box-shadow 0.3s ease, border-color 0.3s ease;
           cursor: grab;
+        }
+        
+        .local-pip.speaker-active {
+          border-color: rgba(34,197,94,0.8);
+          box-shadow: 0 0 0 3px rgba(34,197,94,0.4), 0 8px 32px rgba(0,0,0,0.6);
         }
         .local-pip:active { cursor: grabbing; }
         .local-pip:hover { transform: scale(1.03); }
@@ -484,32 +552,31 @@ export default function RoomPage() {
           border: 2px solid rgba(125,211,252,0.2);
         }
 
-        .local-pip .name-tag {
-          bottom: 6px;
-          left: 6px;
-          font-size: 10px;
-          padding: 3px 8px;
-        }
-
-        .remote-name-tag {
+        .name-tag {
           position: absolute;
-          bottom: 14px; left: 14px;
           background: rgba(9,12,16,0.75);
           border: 1px solid rgba(255,255,255,0.1);
           backdrop-filter: blur(8px);
-          padding: 5px 12px;
           border-radius: 999px;
-          font-size: 12px;
+          display: flex; align-items: center; gap: 6px;
           font-weight: 500;
           color: #cbd5e1;
-          display: flex; align-items: center; gap: 6px;
           z-index: 10;
         }
-        .remote-name-tag .name-tag-dot {
+        .remote-name-tag {
+          bottom: 14px; left: 14px;
+          padding: 5px 12px;
+          font-size: 12px;
+        }
+        .local-name-tag {
+          bottom: 10px; left: 10px;
+          padding: 4px 10px;
+          font-size: 11px;
+        }
+        .name-tag-dot {
           width: 6px; height: 6px;
           border-radius: 50%;
-          background: #22c55e;
-          animation: pulse 2s infinite;
+          transition: transform 0.1s ease-out, background-color 0.2s;
         }
 
         @keyframes pulse {
@@ -1049,7 +1116,7 @@ export default function RoomPage() {
           </div>
         ) : (
           <>
-            <div className="video-container">
+            <div className={`video-container ${remoteVolume > 0.05 ? "speaker-active" : ""}`}>
               {/* ── Remote (friend) — full-size background video ── */}
               <video ref={remoteVideoRef} autoPlay playsInline />
 
@@ -1069,8 +1136,14 @@ export default function RoomPage() {
               )}
 
               {/* Remote name tag */}
-              <div className="remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
-                <span className="name-tag-dot" />
+              <div className="name-tag remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
+                <span 
+                  className="name-tag-dot" 
+                  style={{ 
+                    transform: `scale(${1 + remoteVolume * 2})`, 
+                    background: remoteVolume > 0.05 ? "#22c55e" : "#94a3b8" 
+                  }} 
+                />
                 {remoteName}
               </div>
 
@@ -1083,7 +1156,7 @@ export default function RoomPage() {
               )}
 
               {/* ── Local (self) — picture-in-picture overlay ── */}
-              <div className="local-pip">
+              <div className={`local-pip ${localVolume > 0.05 && !micMuted ? "speaker-active" : ""}`}>
                 <video ref={localVideoRef} autoPlay muted playsInline />
                 {camOff && (
                   <div className="cam-off-overlay">
@@ -1092,8 +1165,14 @@ export default function RoomPage() {
                     </div>
                   </div>
                 )}
-                <div className="name-tag">
-                  <span className="name-tag-dot" />
+                <div className="name-tag local-name-tag">
+                  <span 
+                    className="name-tag-dot" 
+                    style={{ 
+                      transform: `scale(${micMuted ? 1 : 1 + localVolume * 2})`, 
+                      background: micMuted ? "#ef4444" : localVolume > 0.05 ? "#22c55e" : "#94a3b8" 
+                    }} 
+                  />
                   {name || "You"}
                 </div>
               </div>
