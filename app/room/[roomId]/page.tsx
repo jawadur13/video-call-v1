@@ -92,6 +92,9 @@ export default function RoomPage() {
 
   useEffect(() => {
     return () => {
+      if (peerRef.current?.openTimeout) {
+        clearTimeout(peerRef.current.openTimeout);
+      }
       peerRef.current?.destroy();
       currentUserStream.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -184,10 +187,17 @@ export default function RoomPage() {
     setWaiting(true);
 
     try {
-      // Fetch TURN credentials
-      const credRes = await fetch("/api/turn-credentials");
-      if (!credRes.ok) throw new Error("Could not fetch TURN credentials");
-      const { iceServers } = await credRes.json();
+      // Fetch TURN credentials (optional - will work without them, just less reliable)
+      let iceServers = [];
+      try {
+        const credRes = await fetch("/api/turn-credentials");
+        if (credRes.ok) {
+          const { iceServers: servers } = await credRes.json();
+          iceServers = servers;
+        }
+      } catch (err) {
+        console.warn("TURN credentials fetch failed, continuing without TURN:", err);
+      }
 
       // Get media stream
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -199,18 +209,35 @@ export default function RoomPage() {
       if (localAudioCleanupRef.current) localAudioCleanupRef.current();
       localAudioCleanupRef.current = setupAudioAnalysis(stream, setLocalVolume);
 
-      // Create peer
+      // Create peer with optional TURN credentials
       const peer = new Peer({
         config: { iceServers, sdpSemantics: "unified-plan" },
       });
 
       peer.on("open", async (id) => {
         setMyId(id);
+        
+        // Clear the open timeout since we connected successfully
+        if (peerRef.current?.openTimeout) {
+          clearTimeout(peerRef.current.openTimeout);
+        }
+
+        // Validate roomId before making API call
+        if (!roomId || typeof roomId !== 'string') {
+          console.error("Invalid roomId:", roomId);
+          alert("Invalid room ID");
+          setLoading(false);
+          setWaiting(false);
+          peer.destroy();
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
 
         // Join room
         try {
           const joinRes = await fetch(`/api/rooms/${roomId}/join`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ peerId: id, name: name.trim() }),
           });
 
@@ -227,7 +254,7 @@ export default function RoomPage() {
           }
 
           if (!joinRes.ok) {
-            throw new Error(joinData.error || "Failed to join room");
+            throw new Error(joinData.error || `Failed to join room (${joinRes.status})`);
           }
 
           // Connect to other peer if they exist
@@ -241,7 +268,8 @@ export default function RoomPage() {
           setWaiting(false);
         } catch (err) {
           console.error("Join room error:", err);
-          alert("Failed to join room");
+          const errorMsg = err instanceof Error ? err.message : "Failed to join room";
+          alert(`Failed to join room: ${errorMsg}`);
           setLoading(false);
           setWaiting(false);
           peer.destroy();
@@ -256,15 +284,38 @@ export default function RoomPage() {
       });
       peer.on("error", (err) => {
         console.error("Peer error:", err);
-        alert(`Connection error: ${err.message}`);
         setLoading(false);
         setWaiting(false);
+        // Only show error if not already connected
+        if (!joined) {
+          const errorMsg = err.type === "browser-incompatible" 
+            ? "Your browser doesn't support WebRTC" 
+            : err.type === "unavailable-id"
+            ? "Peer ID already in use, trying again..."
+            : err.message || "Connection error";
+          alert(`Connection error: ${errorMsg}`);
+        }
       });
 
+      // Add timeout for peer open event
+      const openTimeout = setTimeout(() => {
+        if (!joined) {
+          console.error("Peer open timeout");
+          alert("Connection timeout. Please check your internet and try again.");
+          setLoading(false);
+          setWaiting(false);
+          peer.destroy();
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      }, 15000); // 15 second timeout
+
+      // Store timeout to clean up later
       peerRef.current = peer;
+      peerRef.current.openTimeout = openTimeout as any;
     } catch (err) {
       console.error("Setup error:", err);
-      alert("Setup failed. Check permissions and ensure you are on HTTPS.");
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      alert(`Setup failed: ${errorMsg}\n\nMake sure:\n- You have camera/microphone permissions\n- You are on HTTPS (or localhost)\n- Browser supports WebRTC`);
       setLoading(false);
       setWaiting(false);
     }
