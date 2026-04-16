@@ -818,7 +818,7 @@ export default function RoomPage() {
         .video-container {
           position: relative;
           width: 100%;
-          max-width: 1100px;
+          max-width: 1200px;
           aspect-ratio: 16/9;
           border-radius: 20px;
           overflow: hidden;
@@ -826,67 +826,56 @@ export default function RoomPage() {
           box-shadow: 0 16px 48px rgba(0,0,0,0.5);
           border: 1.5px solid rgba(255,255,255,0.07);
           transition: box-shadow 0.3s ease, border-color 0.3s ease;
+          display: grid;
+          gap: 12px;
+          padding: 12px;
         }
 
-        .video-container.speaker-active {
-          border-color: rgba(34,197,94,0.6);
-          box-shadow: 0 0 0 3px rgba(34,197,94,0.3), 0 16px 48px rgba(0,0,0,0.5);
-        }
+        .video-container[data-peers="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+        .video-container[data-peers="2"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+        .video-container[data-peers="3"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .video-container[data-peers="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 
-        .video-container video {
+        .peer-box {
+          position: relative;
           width: 100%;
           height: 100%;
-          object-fit: contain;
-          display: block;
           background: #000;
-        }
-
-        .local-pip {
-          position: absolute;
-          bottom: 16px;
-          right: 16px;
-          width: clamp(140px, 22vw, 240px);
-          aspect-ratio: 16/9;
-          border-radius: 14px;
+          border-radius: 12px;
           overflow: hidden;
-          border: 2px solid rgba(56,189,248,0.4);
-          box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(56,189,248,0.15);
-          background: #0f1419;
-          z-index: 20;
-          transition: transform 0.2s, box-shadow 0.3s ease, border-color 0.3s ease;
-          cursor: grab;
+          border: 2px solid transparent;
+          transition: border-color 0.3s;
         }
 
-        .local-pip.speaker-active {
+        .peer-box.speaker-active {
           border-color: rgba(34,197,94,0.8);
-          box-shadow: 0 0 0 3px rgba(34,197,94,0.4), 0 8px 32px rgba(0,0,0,0.6);
+          box-shadow: 0 0 0 2px rgba(34,197,94,0.4) inset;
         }
-        .local-pip:active { cursor: grabbing; }
-        .local-pip:hover { transform: scale(1.03); }
 
-        .local-pip video {
+        .peer-box video {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
-          transform: scaleX(-1);
+          background: #000;
         }
 
-        .local-pip .cam-off-overlay {
+        .peer-box .cam-off-overlay {
           position: absolute;
           inset: 0;
           display: flex;
           align-items: center;
           justify-content: center;
           background: #0f1419;
+          z-index: 10;
         }
-        .local-pip .cam-off-avatar {
-          width: 40px; height: 40px;
+        .peer-box .cam-off-avatar {
+          width: 80px; height: 80px;
           border-radius: 50%;
           background: linear-gradient(135deg, #1e3a5f, #312e81);
           display: flex; align-items: center; justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 16px;
+          font-size: 28px;
           font-weight: 700;
           color: #7dd3fc;
           border: 2px solid rgba(125,211,252,0.2);
@@ -894,30 +883,21 @@ export default function RoomPage() {
 
         .name-tag {
           position: absolute;
-          bottom: 14px; left: 14px;
+          bottom: 12px; left: 12px;
           background: rgba(9,12,16,0.75);
           border: 1px solid rgba(255,255,255,0.1);
           backdrop-filter: blur(8px);
-          padding: 5px 12px;
+          padding: 6px 12px;
           border-radius: 999px;
-          font-size: 12px;
-          display: flex; align-items: center; gap: 6px;
+          font-size: 13px;
+          display: flex; align-items: center; gap: 8px;
           font-weight: 500;
           color: #cbd5e1;
-          z-index: 10;
+          z-index: 30;
         }
-        .remote-name-tag {
-          bottom: 14px; left: 14px;
-          padding: 5px 12px;
-          font-size: 12px;
-        }
-        .local-name-tag {
-          bottom: 10px; left: 10px;
-          padding: 4px 10px;
-          font-size: 11px;
-        }
+
         .name-tag-dot {
-          width: 6px; height: 6px;
+          width: 8px; height: 8px;
           border-radius: 50%;
           background: #22c55e;
           animation: pulse 2s infinite;
@@ -1127,8 +1107,7 @@ export default function RoomPage() {
 
         @media (max-width: 640px) {
           .room-wrapper { padding: 16px 12px 32px; }
-          .video-container { aspect-ratio: 9/16; max-height: 65vh; }
-          .local-pip { width: clamp(80px, 24vw, 120px); aspect-ratio: 9/16; }
+          .video-container { aspect-ratio: auto; min-height: 50vh; }
         }
 
         .toast-popup {
@@ -1315,7 +1294,16 @@ export default function RoomPage() {
               {/* Remote Peers Grid */}
               {Object.entries(remotePeersState).map(([peerId, p]) => (
                 <div key={peerId} className={`peer-box ${p.volume > 0.05 ? "speaker-active" : ""}`}>
-                  <video ref={el => { remoteVideoRefs.current[peerId] = el; }} autoPlay playsInline />
+                  <video 
+                    ref={el => { 
+                      remoteVideoRefs.current[peerId] = el; 
+                      if (el && remotePeersRef.current[peerId]?.stream) {
+                        el.srcObject = remotePeersRef.current[peerId].stream;
+                      }
+                    }} 
+                    autoPlay 
+                    playsInline 
+                  />
                   <div className="name-tag">
                     <span
                       className="name-tag-dot"
