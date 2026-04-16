@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getRoomPeers, isRoomFull, leaveRoom } from '../../../../app/lib/rooms';
+import { getRoomPeersAsync, isRoomFullAsync, leaveRoomAsync } from '../../../../app/lib/rooms';
 
 export default async function handler(
   req: NextApiRequest,
@@ -13,14 +13,13 @@ export default async function handler(
 
   try {
     if (req.method === 'DELETE') {
-      // Leave room
       const { peerId } = req.body;
 
       if (!peerId) {
         return res.status(400).json({ error: 'Missing peerId' });
       }
 
-      leaveRoom(roomId, peerId);
+      await leaveRoomAsync(roomId, peerId);
 
       return res.status(200).json({
         success: true,
@@ -28,9 +27,8 @@ export default async function handler(
         peerId,
       });
     } else if (req.method === 'GET') {
-      // Get room info
-      const peers = getRoomPeers(roomId);
-      const isFull = isRoomFull(roomId);
+      const peers = await getRoomPeersAsync(roomId);
+      const isFull = await isRoomFullAsync(roomId);
 
       return res.status(200).json({
         roomId,

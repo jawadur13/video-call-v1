@@ -7,8 +7,9 @@ interface IceServer {
 }
 
 /**
- * Returns TURN/STUN server credentials for WebRTC connections.
- * This version supports Metered.ca dynamic credentials if configured.
+ * Fetches TURN credentials from Cloudflare TURN service.
+ * Uses TURN_KEY_ID and TURN_KEY_API_TOKEN env vars (set in Vercel).
+ * Falls back to Google STUN only if Cloudflare is unavailable.
  */
 export default async function handler(
   req: NextApiRequest,
@@ -18,64 +19,56 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Default STUN servers
-  let iceServers: IceServer[] = [
+  // Always include reliable Google STUN servers
+  const defaultStun: IceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ];
 
+  const keyId = process.env.TURN_KEY_ID;
+  const apiToken = process.env.TURN_KEY_API_TOKEN;
+
+  if (!keyId || !apiToken) {
+    console.warn('[turn] TURN_KEY_ID or TURN_KEY_API_TOKEN not set. Using STUN only.');
+    return res.status(200).json({ iceServers: defaultStun });
+  }
+
   try {
-    const meteredApiKey = process.env.TURN_KEY_API_TOKEN;
-    const meteredAppId = process.env.TURN_KEY_ID;
-
-    // 1. Check for Metered.ca credentials (preferred for production)
-    if (meteredApiKey) {
-      // If we have an App ID, we use the metered.live endpoint, otherwise the generic one
-      const endpoint = meteredAppId 
-        ? `https://${meteredAppId}.metered.live/api/v1/turn/credentials`
-        : `https://metered.ca/api/v1/turn/credentials`;
-
-      try {
-        const response = await fetch(`${endpoint}?apiKey=${meteredApiKey}`);
-        if (response.ok) {
-          const meteredServers = await response.json();
-          if (Array.isArray(meteredServers)) {
-            // Found Metered servers! We use these alongside our STUN servers.
-            iceServers = [...iceServers, ...meteredServers];
-            return res.status(200).json({ iceServers });
-          }
-        }
-      } catch (err) {
-        console.warn("Metered TURN fetch failed, falling back to static/STUN:", err);
+    // Cloudflare TURN credentials API — generates a short-lived username/credential
+    const cfRes = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: 86400 }), // credentials valid for 24 hours
       }
+    );
+
+    if (!cfRes.ok) {
+      const errText = await cfRes.text();
+      console.error('[turn] Cloudflare TURN API error:', cfRes.status, errText);
+      return res.status(200).json({ iceServers: defaultStun });
     }
 
-    // 2. Fallback to static TURN servers if configured manually
-    const turnUrl = process.env.TURN_SERVER_URL;
-    const turnUsername = process.env.TURN_SERVER_USERNAME;
-    const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
+    const data = await cfRes.json();
 
-    if (turnUrl && turnUsername && turnCredential) {
-      iceServers.push({
-        urls: turnUrl,
-        username: turnUsername,
-        credential: turnCredential,
-      });
-    }
+    // Cloudflare returns: { iceServers: { urls: [...], username, credential } }
+    // Normalize to always be an array
+    const cfServers = data.iceServers
+      ? (Array.isArray(data.iceServers) ? data.iceServers : [data.iceServers])
+      : [];
 
-    return res.status(200).json({ iceServers });
-  } catch (error) {
-    console.error('TURN credentials error:', error);
-    // Absolute fallback: Google STUN + Public OpenRelay for emergency NAT traversal
+    console.log(`[turn] Cloudflare TURN: ${cfServers.length} server(s) fetched.`);
+
     return res.status(200).json({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelayproject',
-          credential: 'openrelayproject',
-        }
-      ],
+      iceServers: [...defaultStun, ...cfServers],
     });
+  } catch (error) {
+    console.error('[turn] Fetch error:', error);
+    // Always return something usable — STUN works for non-symmetric NAT
+    return res.status(200).json({ iceServers: defaultStun });
   }
 }

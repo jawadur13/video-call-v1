@@ -508,6 +508,7 @@ export default function RoomPage() {
         if (!joinedRef.current) {
           console.error("Peer open timeout");
           alert("Connection timeout. Please check your internet and try again.");
+          peerOpenTimeoutRef.current = null;
           setLoading(false);
           setWaiting(false);
           peer.destroy();
@@ -631,24 +632,7 @@ export default function RoomPage() {
 
   const isConnected = Object.keys(remotePeersState).length > 0;
 
-  const [_callDuration, setCallDuration] = useState(0);
 
-  useEffect(() => {
-    if (!isConnected) {
-      setCallDuration(0);
-      return;
-    }
-    const interval = setInterval(() => setCallDuration((s) => s + 1), 1000);
-    return () => clearInterval(interval);
-  }, [isConnected]);
-
-  const _formatDuration = (totalSeconds: number) => {
-    const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
-    const s = (totalSeconds % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
-  };
-
- 
 
   if (!roomId) {
     return (
@@ -663,7 +647,7 @@ export default function RoomPage() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px", background: "#090c10", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}>
         <h1 style={{ fontSize: "24px" }}>Room Full</h1>
-        <p style={{ color: "#94a3b8", marginBottom: "24px" }}>This room is currently full. Max 2 participants allowed.</p>
+        <p style={{ color: "#94a3b8", marginBottom: "24px" }}>This room is currently full. Max 4 participants allowed.</p>
         <button
           onClick={() => typeof window !== 'undefined' && (window.location.href = '/')}
           style={{ padding: "12px 24px", background: "linear-gradient(135deg, #38bdf8, #818cf8)", color: "#fff", borderRadius: "12px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}
