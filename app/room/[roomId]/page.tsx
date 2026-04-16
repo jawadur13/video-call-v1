@@ -23,6 +23,8 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
   const [_toast, setToast] = useState<{ text: string; from: string } | null>(null);
+  const [reactions, setReactions] = useState<{ id: string; emoji: string; from: "me" | "them" }[]>([]);
+  const [showReactionMenu, setShowReactionMenu] = useState(false);
   const [roomFull, setRoomFull] = useState(false);
   const [waiting, setWaiting] = useState(false);
 
@@ -173,9 +175,27 @@ export default function RoomPage() {
           if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
           toastTimerRef.current = setTimeout(() => setToast(null), 4000);
         }
+        if (payload.type === "reaction" && typeof payload.emoji === "string") {
+          const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji: payload.emoji, from: "them" as const };
+          setReactions(prev => [...prev, newReaction]);
+          setTimeout(() => {
+            setReactions(prev => prev.filter(r => r.id !== newReaction.id));
+          }, 2500);
+        }
       }
     });
     conn.on("error", (err) => console.error("DataConnection error:", err));
+  };
+
+  const sendReaction = (emoji: string) => {
+    if (!dataConnRef.current) return;
+    dataConnRef.current.send({ type: "reaction", emoji });
+    
+    const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji, from: "me" as const };
+    setReactions(prev => [...prev, newReaction]);
+    setTimeout(() => {
+      setReactions(prev => prev.filter(r => r.id !== newReaction.id));
+    }, 2500);
   };
 
   const connectToPeer = (stream: MediaStream, remotePeerId: string) => {
@@ -1103,6 +1123,72 @@ export default function RoomPage() {
           from { opacity: 0; transform: translate(-50%, -10px); }
           to { opacity: 1; transform: translate(-50%, 0); }
         }
+
+        .reaction-menu {
+          width: 100%;
+          max-width: 1100px;
+          margin-top: 8px;
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 12px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 20px;
+          backdrop-filter: blur(12px);
+          animation: chatSlideIn 0.25s ease-out;
+        }
+        .emoji-btn {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 50%;
+          width: 44px;
+          height: 44px;
+          font-size: 20px;
+          cursor: pointer;
+          transition: transform 0.2s, background 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .emoji-btn:hover {
+          transform: scale(1.15);
+          background: rgba(255,255,255,0.15);
+        }
+
+        .floating-reaction {
+          position: absolute;
+          font-size: 48px;
+          pointer-events: none;
+          z-index: 40;
+          animation: floatUp 2.5s ease-out forwards;
+        }
+        .floating-reaction.me {
+          bottom: 20px;
+          right: 40px;
+        }
+        .floating-reaction.them {
+          bottom: 50px;
+          left: 50%;
+        }
+        @keyframes floatUp {
+          0% {
+            opacity: 0;
+            transform: translateY(20px) scale(0.5);
+          }
+          10% {
+            opacity: 1;
+            transform: translateY(0) scale(1.2);
+          }
+          20% {
+            transform: translateY(-10px) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(-150px) scale(1.5);
+          }
+        }
       `}</style>
 
       <div className="room-wrapper">
@@ -1176,6 +1262,12 @@ export default function RoomPage() {
                 </div>
               )}
 
+              {reactions.map(r => (
+                <div key={r.id} className={`floating-reaction ${r.from}`}>
+                  {r.emoji}
+                </div>
+              ))}
+
               {!isConnected && (
                 <div className="waiting-overlay">
                   <div>👥</div>
@@ -1228,6 +1320,10 @@ export default function RoomPage() {
                   <span className="btn-icon">{screenSharing ? "🛑" : "📺"}</span>
                   {screenSharing ? "Stop" : "Share"}
                 </button>
+                <button className={`btn-action${showReactionMenu ? " muted" : ""}`} onClick={() => setShowReactionMenu(!showReactionMenu)}>
+                  <span className="btn-icon">✨</span>
+                  React
+                </button>
                 <button className={`btn-action${chatOpen ? " muted" : ""}`} onClick={() => setChatOpen(!chatOpen)}>
                   <span className="btn-icon">💬</span>
                   Chat
@@ -1236,6 +1332,16 @@ export default function RoomPage() {
                   <span className="btn-icon">📵</span>
                   End
                 </button>
+              </div>
+            )}
+
+            {callActive && showReactionMenu && (
+              <div className="reaction-menu">
+                {["👍", "❤️", "😂", "😮", "👏", "🙋", "✋", "🔥", "👎", "😢"].map(emoji => (
+                  <button key={emoji} className="emoji-btn" onClick={() => sendReaction(emoji)}>
+                    {emoji}
+                  </button>
+                ))}
               </div>
             )}
 
