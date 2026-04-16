@@ -44,6 +44,9 @@ export default function RoomPage() {
   const myIdRef = useRef(myId);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
 
+  const joinedRef = useRef(joined);
+  useEffect(() => { joinedRef.current = joined; }, [joined]);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<Peer | null>(null);
@@ -370,13 +373,19 @@ export default function RoomPage() {
       });
       peer.on("error", (err) => {
         console.error("Peer error:", err);
+        // Ignore "peer-unavailable" since it usually just means an old/stale ghost peer was tried.
+        // It should not block the room or annoy the user.
+        if (err.type === "peer-unavailable") {
+          return;
+        }
+
         // Reset loading state if still waiting/loading
         if (loading || waiting) {
           setLoading(false);
           setWaiting(false);
         }
         // Only show error if not already connected
-        if (!joined) {
+        if (!joinedRef.current) {
           let errorMsg = "Connection error";
           
           if (err.type === "browser-incompatible") {
@@ -395,7 +404,7 @@ export default function RoomPage() {
 
       // Add timeout for peer open event
       peerOpenTimeoutRef.current = setTimeout(() => {
-        if (!joined) {
+        if (!joinedRef.current) {
           console.error("Peer open timeout");
           alert("Connection timeout. Please check your internet and try again.");
           setLoading(false);
