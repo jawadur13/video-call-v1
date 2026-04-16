@@ -320,8 +320,25 @@ export default function RoomPage() {
       const customSecure = process.env.NEXT_PUBLIC_PEERJS_SECURE;
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
+      // PeerJS has its own TURN servers built-in (eu-0/us-0.turn.peerjs.com)
+      // We merge our STUN/TURN servers WITH theirs instead of replacing them
+      const peerJsBuiltinIce = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+          urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'],
+          username: 'peerjs',
+          credential: 'peerjsp',
+        },
+      ];
+
+      // Merge fetched ICE servers with PeerJS built-in ones (deduped by url)
+      const allIceServers = [...peerJsBuiltinIce, ...iceServers.filter((s: any) =>
+        !peerJsBuiltinIce.some((b: any) => JSON.stringify(b.urls) === JSON.stringify(s.urls))
+      )];
+
       const peerConfig: Record<string, unknown> = {
-        config: { iceServers, sdpSemantics: "unified-plan" },
+        config: { iceServers: allIceServers, sdpSemantics: 'unified-plan' },
       };
 
       // Configuration priority: custom env vars > PeerJS Cloud > PeerJS demo server

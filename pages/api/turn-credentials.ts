@@ -20,26 +20,11 @@ export default async function handler(
   }
 
   try {
-    // Default STUN servers (free, no authentication required)
+    // Return STUN servers; custom TURN can be added via env vars.
+    // PeerJS's own built-in TURN (eu-0/us-0.turn.peerjs.com) is merged client-side.
     const iceServers: IceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      // Public free TURN server fallback for NAT traversal if STUN fails
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      }
     ];
 
     // Optional: Add TURN servers if configured
