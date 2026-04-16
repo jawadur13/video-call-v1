@@ -1,15 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface IceServer {
-  urls: string;
+  urls: string | string[];
   username?: string;
   credential?: string;
 }
 
 /**
  * Returns TURN/STUN server credentials for WebRTC connections.
- * Uses Google's public STUN server by default.
- * For production, consider paid TURN services (Twilio, Xirsys, etc.)
+ * This version supports Metered.ca dynamic credentials if configured.
  */
 export default async function handler(
   req: NextApiRequest,
@@ -19,15 +18,39 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    // Return STUN servers; custom TURN can be added via env vars.
-    // PeerJS's own built-in TURN (eu-0/us-0.turn.peerjs.com) is merged client-side.
-    const iceServers: IceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ];
+  // Default STUN servers
+  let iceServers: IceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
 
-    // Optional: Add TURN servers if configured
+  try {
+    const meteredApiKey = process.env.TURN_KEY_API_TOKEN;
+    const meteredAppId = process.env.TURN_KEY_ID;
+
+    // 1. Check for Metered.ca credentials (preferred for production)
+    if (meteredApiKey) {
+      // If we have an App ID, we use the metered.live endpoint, otherwise the generic one
+      const endpoint = meteredAppId 
+        ? `https://${meteredAppId}.metered.live/api/v1/turn/credentials`
+        : `https://metered.ca/api/v1/turn/credentials`;
+
+      try {
+        const response = await fetch(`${endpoint}?apiKey=${meteredApiKey}`);
+        if (response.ok) {
+          const meteredServers = await response.json();
+          if (Array.isArray(meteredServers)) {
+            // Found Metered servers! We use these alongside our STUN servers.
+            iceServers = [...iceServers, ...meteredServers];
+            return res.status(200).json({ iceServers });
+          }
+        }
+      } catch (err) {
+        console.warn("Metered TURN fetch failed, falling back to static/STUN:", err);
+      }
+    }
+
+    // 2. Fallback to static TURN servers if configured manually
     const turnUrl = process.env.TURN_SERVER_URL;
     const turnUsername = process.env.TURN_SERVER_USERNAME;
     const turnCredential = process.env.TURN_SERVER_CREDENTIAL;
@@ -43,7 +66,7 @@ export default async function handler(
     return res.status(200).json({ iceServers });
   } catch (error) {
     console.error('TURN credentials error:', error);
-    // Return fallback servers even if there's an error
+    // Absolute fallback: Google STUN + Public OpenRelay for emergency NAT traversal
     return res.status(200).json({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
