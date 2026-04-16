@@ -105,7 +105,7 @@ export default function RoomPage() {
       source.connect(analyser);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      let animationFrameId: number;
+      let intervalId: ReturnType<typeof setInterval>;
 
       const updateVolume = () => {
         analyser.getByteFrequencyData(dataArray);
@@ -115,13 +115,12 @@ export default function RoomPage() {
         }
         const average = sum / dataArray.length;
         setVolume(Math.min(average / 40, 1));
-        animationFrameId = requestAnimationFrame(updateVolume);
       };
 
-      updateVolume();
+      intervalId = setInterval(updateVolume, 150); // Throttle to roughly ~6 FPS to save CPU and React re-renders
 
       return () => {
-        cancelAnimationFrame(animationFrameId);
+        clearInterval(intervalId);
         source.disconnect();
         audioContext.close().catch(console.error);
       };
@@ -172,7 +171,12 @@ export default function RoomPage() {
     call.on("stream", (remoteStream) => {
       remotePeersRef.current[remotePeerId].stream = remoteStream;
       const videoEl = remoteVideoRefs.current[remotePeerId];
-      if (videoEl) videoEl.srcObject = remoteStream;
+      if (videoEl) {
+        if (videoEl.srcObject !== remoteStream) {
+          videoEl.srcObject = remoteStream;
+          videoEl.play().catch(e => console.warn("AutoPlay blocked:", e));
+        }
+      }
 
       if (remotePeersRef.current[remotePeerId].cleanupAudio) remotePeersRef.current[remotePeerId].cleanupAudio!();
       remotePeersRef.current[remotePeerId].cleanupAudio = setupAudioAnalysis(remoteStream, (v) => updateRemotePeerState(remotePeerId, { volume: v }));
@@ -192,12 +196,25 @@ export default function RoomPage() {
       remotePeersRef.current[remotePeerId].dataConn = conn;
     }
 
-    conn.on("open", () => { conn.send({ callerName: nameRef.current }); });
+    const sendName = () => {
+      conn.send({ callerName: nameRef.current });
+    };
+
+    if (conn.open) {
+      sendName();
+    } else {
+      conn.on("open", sendName);
+    }
     conn.on("data", (data: unknown) => {
       if (data && typeof data === "object") {
         const payload = data as Record<string, unknown>;
         if ("callerName" in payload) {
-          updateRemotePeerState(remotePeerId, { name: (payload as any).callerName || "Friend" });
+          const receivedName = String((payload as any).callerName || "Friend");
+          updateRemotePeerState(remotePeerId, { name: receivedName });
+          // Echo our own name back to ensure the caller didn't miss it during setup
+          if (!(payload as any).isEcho && conn.open) {
+            conn.send({ callerName: nameRef.current, isEcho: true });
+          }
         }
         if (payload.type === "chat" && typeof payload.text === "string" && typeof payload.time === "string") {
           const chatMsg = { from: remotePeerId, text: payload.text, time: payload.time };
@@ -1300,6 +1317,7 @@ export default function RoomPage() {
                       if (el && remotePeersRef.current[peerId]?.stream) {
                         if (el.srcObject !== remotePeersRef.current[peerId].stream) {
                           el.srcObject = remotePeersRef.current[peerId].stream;
+                          el.play().catch(e => console.warn("AutoPlay blocked:", e));
                         }
                       }
                     }} 
