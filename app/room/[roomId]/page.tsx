@@ -38,6 +38,9 @@ export default function RoomPage() {
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
 
+  const myIdRef = useRef(myId);
+  useEffect(() => { myIdRef.current = myId; }, [myId]);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<Peer | null>(null);
@@ -104,14 +107,16 @@ export default function RoomPage() {
       if (remoteAudioCleanupRef.current) remoteAudioCleanupRef.current();
       
       // Leave room on unmount
-      if (myId) {
+      if (myIdRef.current) {
         fetch(`/api/rooms/${roomId}/leave`, {
           method: "DELETE",
-          body: JSON.stringify({ peerId: myId }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peerId: myIdRef.current }),
+          keepalive: true,
         }).catch(console.error);
       }
     };
-  }, [myId, roomId]);
+  }, [roomId]);
 
   useEffect(() => {
     if (joined && localVideoRef.current && currentUserStream.current) {
