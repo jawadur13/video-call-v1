@@ -1298,7 +1298,9 @@ export default function RoomPage() {
                     ref={el => { 
                       remoteVideoRefs.current[peerId] = el; 
                       if (el && remotePeersRef.current[peerId]?.stream) {
-                        el.srcObject = remotePeersRef.current[peerId].stream;
+                        if (el.srcObject !== remotePeersRef.current[peerId].stream) {
+                          el.srcObject = remotePeersRef.current[peerId].stream;
+                        }
                       }
                     }} 
                     autoPlay 
