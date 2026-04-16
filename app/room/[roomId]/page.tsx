@@ -160,6 +160,20 @@ export default function RoomPage() {
     }
   }, [joined]);
 
+  // KEY FIX: After every render (triggered by remotePeersState changes),
+  // scan all peers and attach any streams that arrived before their video element was painted.
+  useEffect(() => {
+    Object.entries(remotePeersRef.current).forEach(([peerId, peer]) => {
+      if (!peer.stream) return;
+      const videoEl = remoteVideoRefs.current[peerId];
+      if (videoEl && videoEl.srcObject !== peer.stream) {
+        console.log("[useEffect] Late-attaching stream for", peerId);
+        videoEl.srcObject = peer.stream;
+        videoEl.play().catch(e => console.warn("AutoPlay blocked:", e));
+      }
+    });
+  }, [remotePeersState]);
+
   const attachCallListeners = (call: ReturnType<Peer["call"]>, remotePeerId: string) => {
     if (!remotePeersRef.current[remotePeerId]) {
       remotePeersRef.current[remotePeerId] = { call };
@@ -169,19 +183,22 @@ export default function RoomPage() {
     setCallActive(true);
 
     call.on("stream", (remoteStream) => {
+      console.log("[stream] received from", remotePeerId);
       remotePeersRef.current[remotePeerId].stream = remoteStream;
+
+      // Ensure this peer appears in React state (creates the peer-box in DOM)
+      updateRemotePeerState(remotePeerId, {});
+
+      // Try to attach immediately; if the video element isn't rendered yet,
+      // the useEffect below will pick it up on next render
       const videoEl = remoteVideoRefs.current[remotePeerId];
-      if (videoEl) {
-        if (videoEl.srcObject !== remoteStream) {
-          videoEl.srcObject = remoteStream;
-          videoEl.play().catch(e => console.warn("AutoPlay blocked:", e));
-        }
+      if (videoEl && videoEl.srcObject !== remoteStream) {
+        videoEl.srcObject = remoteStream;
+        videoEl.play().catch(e => console.warn("AutoPlay blocked:", e));
       }
 
       if (remotePeersRef.current[remotePeerId].cleanupAudio) remotePeersRef.current[remotePeerId].cleanupAudio!();
       remotePeersRef.current[remotePeerId].cleanupAudio = setupAudioAnalysis(remoteStream, (v) => updateRemotePeerState(remotePeerId, { volume: v }));
-      
-      updateRemotePeerState(remotePeerId, {});
     });
     call.on("error", (err) => console.error("Call error:", err));
     call.on("close", () => {
@@ -401,10 +418,12 @@ export default function RoomPage() {
             throw new Error(joinData.error || `Failed to join room (${joinRes.status})`);
           }
 
-          // Connect to all other existing peers
+          // Pre-seed names from the join response so nametags show immediately
           if (joinData.allPeers && Array.isArray(joinData.allPeers)) {
             const others = joinData.allPeers.filter((p: any) => p.peerId !== id);
             for (const p of others) {
+              // Seed the state so the peer-box renders before the stream arrives
+              updateRemotePeerState(p.peerId, { name: p.name || "Friend" });
               connectToPeer(stream, p.peerId);
             }
           }

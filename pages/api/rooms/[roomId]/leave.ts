@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { leaveRoom } from '../../../../app/lib/rooms';
+import { leaveRoomAsync } from '../../../../app/lib/rooms';
 
 export default async function handler(
   req: NextApiRequest,
@@ -22,7 +22,7 @@ export default async function handler(
       return res.status(400).json({ error: 'Missing peerId' });
     }
 
-    leaveRoom(roomId, peerId);
+    await leaveRoomAsync(roomId, peerId);
 
     return res.status(200).json({
       success: true,

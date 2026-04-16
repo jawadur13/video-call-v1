@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { joinRoom, isRoomFull, getRoomPeers } from '../../../../app/lib/rooms';
+import { joinRoomAsync, isRoomFullAsync, getRoomPeersAsync } from '../../../../app/lib/rooms';
 
 export default async function handler(
   req: NextApiRequest,
@@ -23,18 +23,18 @@ export default async function handler(
     }
 
     // Check if room is full
-    if (isRoomFull(roomId)) {
+    if (await isRoomFullAsync(roomId)) {
       return res.status(409).json({ error: 'Room is full', isFull: true });
     }
 
     // Join room and get other peer info
-    joinRoom(roomId, peerId, name);
+    await joinRoomAsync(roomId, peerId, name);
 
     return res.status(200).json({
       success: true,
       roomId,
       peerId,
-      allPeers: getRoomPeers(roomId),
+      allPeers: await getRoomPeersAsync(roomId),
     });
   } catch (error) {
     console.error(`POST /api/rooms/${roomId}/join error:`, error);
