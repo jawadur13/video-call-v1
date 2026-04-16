@@ -30,11 +30,19 @@ export default async function handler(
     // Join room and get other peer info
     await joinRoomAsync(roomId, peerId, name);
 
+    const allPeers = await getRoomPeersAsync(roomId);
+    
+    const usingRedis = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+    console.log(`[join] room=${roomId} peerId=${peerId} allPeers=${allPeers.length} redis=${usingRedis}`);
+    if (!usingRedis && process.env.NODE_ENV === 'production') {
+      console.warn('[join] WARNING: No Redis configured! Room state is in-memory per-instance. This WILL break multi-user on Vercel. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel env vars.');
+    }
+
     return res.status(200).json({
       success: true,
       roomId,
       peerId,
-      allPeers: await getRoomPeersAsync(roomId),
+      allPeers,
     });
   } catch (error) {
     console.error(`POST /api/rooms/${roomId}/join error:`, error);

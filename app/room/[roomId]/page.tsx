@@ -181,6 +181,8 @@ export default function RoomPage() {
       remotePeersRef.current[remotePeerId].call = call;
     }
     setCallActive(true);
+    // Immediately add to React state so the box renders even before stream arrives
+    updateRemotePeerState(remotePeerId, {});
 
     call.on("stream", (remoteStream) => {
       console.log("[stream] received from", remotePeerId);
@@ -459,8 +461,14 @@ export default function RoomPage() {
         }
       });
 
-      peer.on("connection", (conn) => { handleDataConnection(conn, conn.peer); });
+      peer.on("connection", (conn) => {
+        // Immediately show a placeholder box for the connecting peer on the host side
+        updateRemotePeerState(conn.peer, {});
+        handleDataConnection(conn, conn.peer);
+      });
       peer.on("call", (call) => {
+        // Immediately show a placeholder box for the calling peer on the host side
+        updateRemotePeerState(call.peer, {});
         call.answer(stream);
         attachCallListeners(call, call.peer);
       });
