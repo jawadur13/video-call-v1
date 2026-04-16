@@ -10,9 +10,7 @@ export default function RoomPage() {
 
   const [myId, setMyId] = useState("");
   const [name, setName] = useState("");
-  const [remoteName, setRemoteName] = useState("Friend");
   const [joined, setJoined] = useState(false);
-  const [iceStatus, setIceStatus] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [callActive, setCallActive] = useState(false);
@@ -21,15 +19,15 @@ export default function RoomPage() {
   const [screenSharing, setScreenSharing] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
-  const [messages, setMessages] = useState<{ from: "me" | "them"; text: string; time: string }[]>([]);
+  const [messages, setMessages] = useState<{ from: string; text: string; time: string }[]>([]);
   const [_toast, setToast] = useState<{ text: string; from: string } | null>(null);
-  const [reactions, setReactions] = useState<{ id: string; emoji: string; from: "me" | "them" }[]>([]);
+  const [reactions, setReactions] = useState<{ id: string; emoji: string; from: string; left?: string }[]>([]);
   const [showReactionMenu, setShowReactionMenu] = useState(false);
   const [roomFull, setRoomFull] = useState(false);
   const [waiting, setWaiting] = useState(false);
 
   const [localVolume, setLocalVolume] = useState(0);
-  const [remoteVolume, setRemoteVolume] = useState(0);
+  const [remotePeersState, setRemotePeersState] = useState<Record<string, { name: string; volume: number }>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -48,16 +46,49 @@ export default function RoomPage() {
   useEffect(() => { joinedRef.current = joined; }, [joined]);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const peerRef = useRef<Peer | null>(null);
   const currentUserStream = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
-  const activeCallRef = useRef<ReturnType<Peer["call"]> | null>(null);
-  const dataConnRef = useRef<DataConnection | null>(null);
-  const localAudioCleanupRef = useRef<(() => void) | null>(null);
-  const remoteAudioCleanupRef = useRef<(() => void) | null>(null);
-  const remotePeerIdRef = useRef<string | null>(null);
+  
+  const remotePeersRef = useRef<Record<string, {
+    call: ReturnType<Peer["call"]>;
+    dataConn?: DataConnection;
+    cleanupAudio?: () => void;
+    stream?: MediaStream;
+  }>>({});
+  
   const peerOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localAudioCleanupRef = useRef<(() => void) | null>(null);
+
+  const updateRemotePeerState = (peerId: string, updates: Partial<{ name: string; volume: number }>) => {
+    setRemotePeersState(prev => ({
+      ...prev,
+      [peerId]: {
+        name: prev[peerId]?.name || "Friend",
+        volume: prev[peerId]?.volume || 0,
+        ...updates
+      }
+    }));
+  };
+
+  const removeRemotePeer = (peerId: string) => {
+    const p = remotePeersRef.current[peerId];
+    if (p) {
+      p.call?.close();
+      p.dataConn?.close();
+      p.cleanupAudio?.();
+      delete remotePeersRef.current[peerId];
+      if (remoteVideoRefs.current[peerId]) delete remoteVideoRefs.current[peerId];
+    }
+    setRemotePeersState(prev => {
+      const next = { ...prev };
+      delete next[peerId];
+      return next;
+    });
+    // Check ref directly instead of state to prevent race conditions during unmount/cleanup
+    if (Object.keys(remotePeersRef.current).length === 0) setCallActive(false);
+  };
 
   const setupAudioAnalysis = (stream: MediaStream, setVolume: (v: number) => void) => {
     try {
@@ -110,7 +141,7 @@ export default function RoomPage() {
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (localAudioCleanupRef.current) localAudioCleanupRef.current();
-      if (remoteAudioCleanupRef.current) remoteAudioCleanupRef.current();
+      Object.keys(remotePeersRef.current).forEach(removeRemotePeer);
       
       // Leave room on unmount
       if (myIdRef.current) {
@@ -131,55 +162,58 @@ export default function RoomPage() {
   }, [joined]);
 
   const attachCallListeners = (call: ReturnType<Peer["call"]>, remotePeerId: string) => {
-    remotePeerIdRef.current = remotePeerId;
-    activeCallRef.current = call;
+    if (!remotePeersRef.current[remotePeerId]) {
+      remotePeersRef.current[remotePeerId] = { call };
+    } else {
+      remotePeersRef.current[remotePeerId].call = call;
+    }
     setCallActive(true);
 
-    call.peerConnection.oniceconnectionstatechange = () => {
-      const state = call.peerConnection.iceConnectionState;
-      setIceStatus(state);
-      console.log("ICE state:", state);
-    };
-    call.peerConnection.onconnectionstatechange = () => {
-      console.log("Connection state:", call.peerConnection.connectionState);
-    };
     call.on("stream", (remoteStream) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-      }
+      remotePeersRef.current[remotePeerId].stream = remoteStream;
+      const videoEl = remoteVideoRefs.current[remotePeerId];
+      if (videoEl) videoEl.srcObject = remoteStream;
 
-      if (remoteAudioCleanupRef.current) remoteAudioCleanupRef.current();
-      remoteAudioCleanupRef.current = setupAudioAnalysis(remoteStream, setRemoteVolume);
+      if (remotePeersRef.current[remotePeerId].cleanupAudio) remotePeersRef.current[remotePeerId].cleanupAudio!();
+      remotePeersRef.current[remotePeerId].cleanupAudio = setupAudioAnalysis(remoteStream, (v) => updateRemotePeerState(remotePeerId, { volume: v }));
+      
+      updateRemotePeerState(remotePeerId, {});
     });
     call.on("error", (err) => console.error("Call error:", err));
     call.on("close", () => {
-      if (screenSharing) stopScreenShare();
-      setIceStatus("closed");
-      setCallActive(false);
-      setRemoteName("Friend");
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      removeRemotePeer(remotePeerId);
     });
   };
 
-  const handleDataConnection = (conn: DataConnection, _remotePeerId: string) => {
-    dataConnRef.current = conn;
+  const handleDataConnection = (conn: DataConnection, remotePeerId: string) => {
+    if (!remotePeersRef.current[remotePeerId]) {
+      remotePeersRef.current[remotePeerId] = { call: null as any, dataConn: conn };
+    } else {
+      remotePeersRef.current[remotePeerId].dataConn = conn;
+    }
+
     conn.on("open", () => { conn.send({ callerName: nameRef.current }); });
     conn.on("data", (data: unknown) => {
       if (data && typeof data === "object") {
         const payload = data as Record<string, unknown>;
         if ("callerName" in payload) {
-          setRemoteName((payload as { callerName: string }).callerName || "Friend");
+          updateRemotePeerState(remotePeerId, { name: (payload as any).callerName || "Friend" });
         }
         if (payload.type === "chat" && typeof payload.text === "string" && typeof payload.time === "string") {
-          const chatMsg = { from: "them" as const, text: payload.text, time: payload.time };
+          const chatMsg = { from: remotePeerId, text: payload.text, time: payload.time };
           setMessages((prev) => [...prev, chatMsg]);
-          const senderName = typeof payload.from === "string" ? payload.from : remoteName;
-          setToast({ text: payload.text, from: senderName });
-          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-          toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+          
+          setRemotePeersState(prev => {
+             const senderName = prev[remotePeerId]?.name || "Friend";
+             setToast({ text: payload.text as string, from: senderName });
+             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+             toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+             return prev;
+          });
         }
         if (payload.type === "reaction" && typeof payload.emoji === "string") {
-          const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji: payload.emoji, from: "them" as const };
+          const rLeft = 20 + (Math.random() * 60);
+          const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji: payload.emoji, from: remotePeerId, left: `${rLeft}%` };
           setReactions(prev => [...prev, newReaction]);
           setTimeout(() => {
             setReactions(prev => prev.filter(r => r.id !== newReaction.id));
@@ -188,13 +222,17 @@ export default function RoomPage() {
       }
     });
     conn.on("error", (err) => console.error("DataConnection error:", err));
+    conn.on("close", () => removeRemotePeer(remotePeerId));
   };
 
   const sendReaction = (emoji: string) => {
-    if (!dataConnRef.current) return;
-    dataConnRef.current.send({ type: "reaction", emoji });
+    Object.values(remotePeersRef.current).forEach(p => {
+      p.dataConn?.send({ type: "reaction", emoji });
+    });
     
-    const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji, from: "me" as const };
+    // Position randomly from bottom edge
+    const rLeft = 40 + (Math.random() * 20);
+    const newReaction = { id: Math.random().toString(36).substring(2, 11), emoji, from: "me", left: `${rLeft}%` };
     setReactions(prev => [...prev, newReaction]);
     setTimeout(() => {
       setReactions(prev => prev.filter(r => r.id !== newReaction.id));
@@ -346,10 +384,12 @@ export default function RoomPage() {
             throw new Error(joinData.error || `Failed to join room (${joinRes.status})`);
           }
 
-          // Connect to other peer if they exist
-          if (joinData.otherPeer) {
-            connectToPeer(stream, joinData.otherPeer.peerId);
-            setRemoteName(joinData.otherPeer.name);
+          // Connect to all other existing peers
+          if (joinData.allPeers && Array.isArray(joinData.allPeers)) {
+            const others = joinData.allPeers.filter((p: any) => p.peerId !== id);
+            for (const p of others) {
+              connectToPeer(stream, p.peerId);
+            }
           }
 
           setJoined(true);
@@ -426,25 +466,12 @@ export default function RoomPage() {
 
   const endCall = () => {
     if (screenSharing) stopScreenShare();
-    activeCallRef.current?.close();
-    activeCallRef.current = null;
-    dataConnRef.current?.close();
-    dataConnRef.current = null;
+    Object.keys(remotePeersRef.current).forEach(peerId => removeRemotePeer(peerId));
     setCallActive(false);
-    setIceStatus("");
-    setRemoteName("Friend");
     setMessages([]);
     setChatOpen(false);
     setChatInput("");
     setToast(null);
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-
-    if (remoteAudioCleanupRef.current) {
-      remoteAudioCleanupRef.current();
-      remoteAudioCleanupRef.current = null;
-    }
-    setRemoteVolume(0);
-    
     router.push('/');
   };
 
@@ -465,22 +492,24 @@ export default function RoomPage() {
   };
 
   const replaceVideoTrack = (newTrack: MediaStreamTrack | null) => {
-    const call = activeCallRef.current;
-    if (!call) return;
+    Object.values(remotePeersRef.current).forEach(p => {
+      const call = p.call;
+      if (!call) return;
+      
+      const sender = call.peerConnection
+        .getSenders()
+        .find((peerSender) => peerSender.track?.kind === "video");
 
-    const sender = call.peerConnection
-      .getSenders()
-      .find((peerSender) => peerSender.track?.kind === "video");
-
-    if (sender) {
-      sender.replaceTrack(newTrack).catch((err) => {
-        console.error("Replace video track failed:", err);
-      });
-    }
+      if (sender) {
+        sender.replaceTrack(newTrack).catch((err) => {
+          console.error("Replace video track failed:", err);
+        });
+      }
+    });
   };
 
   const startScreenShare = async () => {
-    if (!activeCallRef.current || screenSharing) return;
+    if (Object.keys(remotePeersRef.current).length === 0 || screenSharing) return;
 
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -528,14 +557,18 @@ export default function RoomPage() {
   };
 
   const sendMessage = () => {
-    if (!chatInput.trim() || !dataConnRef.current) return;
+    if (!chatInput.trim()) return;
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    dataConnRef.current.send({ type: "chat", text: chatInput.trim(), time, from: nameRef.current });
+    
+    Object.values(remotePeersRef.current).forEach(p => {
+      p.dataConn?.send({ type: "chat", text: chatInput.trim(), time, from: nameRef.current });
+    });
+    
     setMessages((prev) => [...prev, { from: "me", text: chatInput.trim(), time }]);
     setChatInput("");
   };
 
-  const isConnected = iceStatus === "connected" || iceStatus === "completed";
+  const isConnected = Object.keys(remotePeersState).length > 0;
 
   const [_callDuration, setCallDuration] = useState(0);
 
@@ -554,11 +587,7 @@ export default function RoomPage() {
     return `${m}:${s}`;
   };
 
-  const iceIndicatorColor =
-    isConnected ? "#22c55e"
-    : iceStatus === "failed" || iceStatus === "closed" ? "#ef4444"
-    : iceStatus === "checking" ? "#f59e0b"
-    : "#6b7280";
+ 
 
   if (!roomId) {
     return (
@@ -1206,10 +1235,10 @@ export default function RoomPage() {
           <p className="header-sub">Private peer-to-peer calls</p>
         </div>
 
-        {iceStatus && (
+        {isConnected && (
           <div className="ice-badge">
-            <span className="ice-dot" style={{ background: iceIndicatorColor }} />
-            {iceStatus}
+            <span className="ice-dot" style={{ background: "#22c55e" }} />
+            connected
           </div>
         )}
 
@@ -1262,47 +1291,16 @@ export default function RoomPage() {
           </>
         ) : (
           <>
-            <div className={`video-container ${remoteVolume > 0.05 ? "speaker-active" : ""}`}>
-              <video ref={remoteVideoRef} autoPlay playsInline />
-
-              {_toast && (
-                <div className="toast-popup">
-                  <span className="toast-from">{_toast.from}:</span> {_toast.text}
-                </div>
-              )}
-
-              {reactions.map(r => (
-                <div key={r.id} className={`floating-reaction ${r.from}`}>
-                  {r.emoji}
-                </div>
-              ))}
-
-              {!isConnected && (
-                <div className="waiting-overlay">
-                  <div>👥</div>
-                  <span>Waiting for friend…</span>
-                </div>
-              )}
-
-              <div className="name-tag remote-name-tag" style={{ opacity: isConnected ? 1 : 0 }}>
-                <span
-                  className="name-tag-dot"
-                  style={{
-                    transform: `scale(${1 + remoteVolume * 2})`,
-                    background: remoteVolume > 0.05 ? "#22c55e" : "#94a3b8",
-                  }}
-                />
-                {remoteName}
-              </div>
-
-              <div className={`local-pip ${localVolume > 0.05 && !micMuted ? "speaker-active" : ""}`}>
-                <video ref={localVideoRef} autoPlay muted playsInline />
+            <div className="video-container" data-peers={Object.keys(remotePeersState).length + 1}>
+              {/* Local Peer Box */}
+              <div className={`peer-box ${localVolume > 0.05 && !micMuted ? "speaker-active" : ""}`}>
+                <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: "scaleX(-1)" }} />
                 {camOff && (
                   <div className="cam-off-overlay">
                     <div className="cam-off-avatar">{name.charAt(0).toUpperCase()}</div>
                   </div>
                 )}
-                <div className="name-tag local-name-tag">
+                <div className="name-tag">
                   <span
                     className="name-tag-dot"
                     style={{
@@ -1313,6 +1311,43 @@ export default function RoomPage() {
                   {name || "You"}
                 </div>
               </div>
+              
+              {/* Remote Peers Grid */}
+              {Object.entries(remotePeersState).map(([peerId, p]) => (
+                <div key={peerId} className={`peer-box ${p.volume > 0.05 ? "speaker-active" : ""}`}>
+                  <video ref={el => { remoteVideoRefs.current[peerId] = el; }} autoPlay playsInline />
+                  <div className="name-tag">
+                    <span
+                      className="name-tag-dot"
+                      style={{
+                        transform: `scale(${1 + p.volume * 2})`,
+                        background: p.volume > 0.05 ? "#22c55e" : "#94a3b8",
+                      }}
+                    />
+                    {p.name}
+                  </div>
+                </div>
+              ))}
+
+              {!isConnected && (
+                <div className="waiting-overlay">
+                  <div>👥</div>
+                  <span>Waiting for others to join…</span>
+                </div>
+              )}
+
+              {/* Toasts and UI overlays */}
+              {_toast && (
+                <div className="toast-popup">
+                  <span className="toast-from">{_toast.from}:</span> {_toast.text}
+                </div>
+              )}
+
+              {reactions.map(r => (
+                <div key={r.id} className="floating-reaction" style={{ bottom: r.from === "me" ? "20px" : "40%", left: r.left || "50%" }}>
+                  {r.emoji}
+                </div>
+              ))}
             </div>
 
             {callActive && (

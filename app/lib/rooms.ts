@@ -48,7 +48,7 @@ export function joinRoom(
   roomId: string,
   peerId: string,
   name: string
-): RoomPeer | null {
+): RoomPeer[] {
   let room = rooms.get(roomId);
 
   if (!room) {
@@ -61,16 +61,13 @@ export function joinRoom(
     rooms.set(roomId, room);
   }
 
-  // Check if room is full (max 2 peers)
-  if (room.peers.size >= 2) {
-    return null; // Room is full
+  // Check if room is full (max 4 peers)
+  if (room.peers.size >= 4) {
+    return []; // Room is full
   }
 
-  // Get the other peer if exists
-  let otherPeer: RoomPeer | null = null;
-  if (room.peers.size === 1) {
-    otherPeer = Array.from(room.peers.values())[0];
-  }
+  // Get other peers
+  const existingPeers = Array.from(room.peers.values());
 
   // Add this peer
   room.peers.set(peerId, {
@@ -79,7 +76,7 @@ export function joinRoom(
     joinedAt: Date.now(),
   });
 
-  return otherPeer;
+  return existingPeers;
 }
 
 /**
@@ -111,7 +108,7 @@ export function getRoomPeers(roomId: string): RoomPeer[] {
  */
 export function isRoomFull(roomId: string): boolean {
   const room = rooms.get(roomId);
-  return room ? room.peers.size >= 2 : false;
+  return room ? room.peers.size >= 4 : false;
 }
 
 /**

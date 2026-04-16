@@ -28,13 +28,12 @@ export default async function handler(
     }
 
     // Join room and get other peer info
-    const otherPeer = joinRoom(roomId, peerId, name);
+    joinRoom(roomId, peerId, name);
 
     return res.status(200).json({
       success: true,
       roomId,
       peerId,
-      otherPeer: otherPeer ? { peerId: otherPeer.peerId, name: otherPeer.name } : null,
       allPeers: getRoomPeers(roomId),
     });
   } catch (error) {
