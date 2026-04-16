@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Peer, { DataConnection } from "peerjs";
 
 export default function RoomPage() {
   const params = useParams();
+  const router = useRouter();
   const roomId = params?.roomId && typeof params.roomId === 'string' ? params.roomId : '';
 
   const [myId, setMyId] = useState("");
@@ -414,6 +415,8 @@ export default function RoomPage() {
       remoteAudioCleanupRef.current = null;
     }
     setRemoteVolume(0);
+    
+    router.push('/');
   };
 
   const toggleMic = () => {
@@ -1069,6 +1072,37 @@ export default function RoomPage() {
           .video-container { aspect-ratio: 9/16; max-height: 65vh; }
           .local-pip { width: clamp(80px, 24vw, 120px); aspect-ratio: 9/16; }
         }
+
+        .toast-popup {
+          position: absolute;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(9, 12, 16, 0.85);
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 8px 16px;
+          border-radius: 999px;
+          color: #e2e8f0;
+          font-size: 13px;
+          z-index: 50;
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          animation: toastSlideDown 0.3s ease-out;
+          max-width: 80%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .toast-from {
+          font-weight: 600;
+          color: #7dd3fc;
+        }
+        @keyframes toastSlideDown {
+          from { opacity: 0; transform: translate(-50%, -10px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
       `}</style>
 
       <div className="room-wrapper">
@@ -1135,6 +1169,12 @@ export default function RoomPage() {
           <>
             <div className={`video-container ${remoteVolume > 0.05 ? "speaker-active" : ""}`}>
               <video ref={remoteVideoRef} autoPlay playsInline />
+
+              {_toast && (
+                <div className="toast-popup">
+                  <span className="toast-from">{_toast.from}:</span> {_toast.text}
+                </div>
+              )}
 
               {!isConnected && (
                 <div className="waiting-overlay">
