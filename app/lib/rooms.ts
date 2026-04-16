@@ -5,6 +5,7 @@ export interface RoomPeer {
   peerId: string;
   name: string;
   joinedAt: number;
+  lastSeen?: number; // updated by client heartbeat every 30s
 }
 
 export interface Room {
@@ -17,6 +18,7 @@ export interface Room {
 export const rooms = new Map<string, Room>();
 const ROOM_TTL_MS = 15 * 60 * 1000;
 const REDIS_TTL_SECONDS = 15 * 60; // 15 minutes
+const STALE_PEER_MS = 3 * 60 * 1000; // 3 minutes — peer considered gone if no heartbeat
 
 // ─── Redis helpers ──────────────────────────────────────────────────────────
 const roomKey = (roomId: string) => `room:${roomId}:peers`;
@@ -26,7 +28,19 @@ async function redisGetPeers(roomId: string): Promise<RoomPeer[]> {
   if (!redis) return [];
   try {
     const raw = await redis.get<RoomPeer[]>(roomKey(roomId));
-    return raw ?? [];
+    if (!raw) return [];
+    // Evict peers whose browser crashed/closed (no heartbeat in STALE_PEER_MS)
+    const now = Date.now();
+    const active = raw.filter(p => now - (p.lastSeen ?? p.joinedAt) < STALE_PEER_MS);
+    if (active.length < raw.length) {
+      console.log(`[rooms] evicted ${raw.length - active.length} stale peer(s) from room ${roomId}`);
+      if (active.length === 0) {
+        await redis.del(roomKey(roomId));
+      } else {
+        await redisSetPeers(roomId, active);
+      }
+    }
+    return active;
   } catch (e) {
     console.error("[rooms] redis GET error:", e);
     return [];
@@ -72,7 +86,7 @@ export async function joinRoomAsync(
     const existing = await redisGetPeers(roomId);
     if (existing.length >= 4) return []; // full
 
-    const newPeer: RoomPeer = { peerId, name, joinedAt: Date.now() };
+    const newPeer: RoomPeer = { peerId, name, joinedAt: Date.now(), lastSeen: Date.now() };
     const updated = [...existing.filter(p => p.peerId !== peerId), newPeer];
     await redisSetPeers(roomId, updated);
     return existing; // return peers that were there BEFORE this join
@@ -85,7 +99,7 @@ export async function joinRoomAsync(
     }
     if (room.peers.size >= 4) return [];
     const existingPeers = Array.from(room.peers.values());
-    room.peers.set(peerId, { peerId, name, joinedAt: Date.now() });
+    room.peers.set(peerId, { peerId, name, joinedAt: Date.now(), lastSeen: Date.now() });
     return existingPeers;
   }
 }
@@ -117,6 +131,16 @@ export async function leaveRoomAsync(roomId: string, peerId: string): Promise<vo
       if (room.peers.size === 0) rooms.delete(roomId);
     }
   }
+}
+
+export async function updatePeerHeartbeatAsync(roomId: string, peerId: string): Promise<void> {
+  const redis = getRedis();
+  if (!redis) return; // in-memory peers don't go stale (same process)
+  const peers = await redisGetPeers(roomId);
+  const updated = peers.map(p =>
+    p.peerId === peerId ? { ...p, lastSeen: Date.now() } : p
+  );
+  await redisSetPeers(roomId, updated);
 }
 
 export async function getRoomPeersAsync(roomId: string): Promise<RoomPeer[]> {

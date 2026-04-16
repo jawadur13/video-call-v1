@@ -60,6 +60,7 @@ export default function RoomPage() {
   
   const peerOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localAudioCleanupRef = useRef<(() => void) | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const updateRemotePeerState = (peerId: string, updates: Partial<{ name: string; volume: number }>) => {
     setRemotePeersState(prev => ({
@@ -140,6 +141,7 @@ export default function RoomPage() {
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (localAudioCleanupRef.current) localAudioCleanupRef.current();
+      if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
       Object.keys(remotePeersRef.current).forEach(removeRemotePeer);
       
       // Leave room on unmount
@@ -320,7 +322,6 @@ export default function RoomPage() {
       const customPort = process.env.NEXT_PUBLIC_PEERJS_PORT;
       const customPath = process.env.NEXT_PUBLIC_PEERJS_PATH;
       const customSecure = process.env.NEXT_PUBLIC_PEERJS_SECURE;
-      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
       // PeerJS has its own TURN servers built-in (eu-0/us-0.turn.peerjs.com)
       // We merge our STUN/TURN servers WITH theirs instead of replacing them
@@ -350,18 +351,11 @@ export default function RoomPage() {
         peerConfig.path = customPath || '/peerjs';
         peerConfig.secure = customSecure !== 'false';
         console.log("Using custom PeerJS server:", peerConfig.host);
-      } else if (isLocalhost) {
-        peerConfig.host = 'localhost';
-        peerConfig.port = 9000;
-        peerConfig.path = '/peerjs';
-        peerConfig.secure = false;
-        console.log("Using local PeerJS server on port 9000");
       } else if (peerKey) {
         peerConfig.key = peerKey;
         console.log("Using PeerJS Cloud with API key");
       } else {
-        // Use PeerJS public cloud server (free, no key required)
-        // This uses PeerJS's shared public signaling server
+        // Use PeerJS public cloud server (free, works on localhost and production)
         peerConfig.host = '0.peerjs.com';
         peerConfig.port = 443;
         peerConfig.path = '/';
@@ -450,6 +444,20 @@ export default function RoomPage() {
           setJoined(true);
           setLoading(false);
           setWaiting(false);
+
+          // Start heartbeat so Redis knows this peer is still alive.
+          // Without this, a crashed browser would leave a ghost peer in the room
+          // blocking others from joining until the 15-min Redis TTL expires.
+          if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = setInterval(() => {
+            if (myIdRef.current) {
+              fetch(`/api/rooms/${roomId}/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ peerId: myIdRef.current }),
+              }).catch(() => {}); // silent - heartbeat failures are non-fatal
+            }
+          }, 30_000); // every 30 seconds
         } catch (err) {
           console.error("Join room error:", err);
           const errorMsg = err instanceof Error ? err.message : "Failed to join room";
