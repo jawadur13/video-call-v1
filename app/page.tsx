@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AdsterraAd from "./components/AdsterraAd";
 
 export default function HomePage() {
   const router = useRouter();
@@ -208,6 +209,7 @@ export default function HomePage() {
           </div>
 
           <div className="divider" />
+          <AdsterraAd type="728x90" />
 
           {/* Join Room Card */}
           <div className="card">

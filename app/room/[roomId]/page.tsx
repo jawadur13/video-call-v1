@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Peer, { DataConnection } from "peerjs";
+import AdsterraAd from "../../components/AdsterraAd";
 
 export default function RoomPage() {
   const params = useParams();
@@ -1319,6 +1320,9 @@ export default function RoomPage() {
               >
                 {loading ? "Joining…" : "Join Call →"}
               </button>
+
+              {/* Native Ad Placement */}
+              <AdsterraAd type="native" />
             </div>
           </>
         ) : (
@@ -1377,6 +1381,9 @@ export default function RoomPage() {
                 <div className="waiting-overlay">
                   <div>👥</div>
                   <span>Waiting for others to join…</span>
+                  
+                  {/* Banner Ad Placement */}
+                  <AdsterraAd type="300x250" />
                 </div>
               )}
 
